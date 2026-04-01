@@ -1,13 +1,10 @@
 /**
  * Perspective warp: transform a card photo into bird's-eye view.
  *
- * Like the competitor's "Warp card for better accuracy" feature:
  * 1. Detect the 4 corners of the card (quadrilateral)
- * 2. Compute a homography matrix
- * 3. Warp the image so the card is a perfect rectangle
- *
- * This eliminates camera perspective distortion, making border
- * measurements much more accurate.
+ * 2. Compute a homography matrix (DLT)
+ * 3. Warp the image so the card fills a perfect rectangle
+ *    using the standard trading card aspect ratio (2.5" × 3.5" = 5:7)
  */
 
 export interface Point {
@@ -16,30 +13,52 @@ export interface Point {
 }
 
 export interface WarpResult {
-  /** Data URL of the warped image */
   dataUrl: string;
-  /** The 4 detected corners in the original image [TL, TR, BR, BL] */
   corners: Point[];
-  /** Width/height of the warped output */
   width: number;
   height: number;
 }
 
 /**
- * Solve for the 3x3 homography matrix mapping 4 src points to 4 dst points.
- * Uses Direct Linear Transform (DLT) with Gaussian elimination.
+ * Solve for the 3×3 homography matrix mapping 4 src points → 4 dst points.
+ * Uses Direct Linear Transform (DLT) with normalization for numerical stability.
  *
  * Returns 9-element array [a,b,c, d,e,f, g,h,1] where:
  *   x' = (a*x + b*y + c) / (g*x + h*y + 1)
  *   y' = (d*x + e*y + f) / (g*x + h*y + 1)
  */
 function solveHomography(src: Point[], dst: Point[]): number[] {
+  // Normalize points for numerical stability
+  function normalize(pts: Point[]): { normalized: Point[]; T: number[][] } {
+    let cx = 0, cy = 0;
+    for (const p of pts) { cx += p.x; cy += p.y; }
+    cx /= pts.length; cy /= pts.length;
+
+    let dist = 0;
+    for (const p of pts) {
+      dist += Math.hypot(p.x - cx, p.y - cy);
+    }
+    dist /= pts.length;
+    const s = Math.SQRT2 / (dist || 1);
+
+    const normalized = pts.map(p => ({ x: s * (p.x - cx), y: s * (p.y - cy) }));
+    const T = [
+      [s, 0, -s * cx],
+      [0, s, -s * cy],
+      [0, 0, 1],
+    ];
+    return { normalized, T };
+  }
+
+  const { normalized: srcN, T: Ts } = normalize(src);
+  const { normalized: dstN, T: Td } = normalize(dst);
+
   const A: number[][] = [];
   const B: number[] = [];
 
   for (let i = 0; i < 4; i++) {
-    const { x, y } = src[i];
-    const { x: xp, y: yp } = dst[i];
+    const { x, y } = srcN[i];
+    const { x: xp, y: yp } = dstN[i];
 
     A.push([x, y, 1, 0, 0, 0, -xp * x, -xp * y]);
     B.push(xp);
@@ -52,7 +71,6 @@ function solveHomography(src: Point[], dst: Point[]): number[] {
   const aug = A.map((row, i) => [...row, B[i]]);
 
   for (let col = 0; col < n; col++) {
-    // Partial pivoting
     let maxRow = col;
     let maxVal = Math.abs(aug[col][col]);
     for (let row = col + 1; row < n; row++) {
@@ -64,7 +82,7 @@ function solveHomography(src: Point[], dst: Point[]): number[] {
     [aug[col], aug[maxRow]] = [aug[maxRow], aug[col]];
 
     const pivot = aug[col][col];
-    if (Math.abs(pivot) < 1e-10) continue;
+    if (Math.abs(pivot) < 1e-12) continue;
 
     for (let j = col; j <= n; j++) aug[col][j] /= pivot;
 
@@ -77,13 +95,55 @@ function solveHomography(src: Point[], dst: Point[]): number[] {
     }
   }
 
-  const h = aug.map((row) => row[n]);
-  return [...h, 1];
+  const hNorm = aug.map((row) => row[n]);
+
+  // Denormalize: H = Td^-1 * Hn * Ts
+  const Hn = [
+    [hNorm[0], hNorm[1], hNorm[2]],
+    [hNorm[3], hNorm[4], hNorm[5]],
+    [hNorm[6], hNorm[7], 1],
+  ];
+
+  // Td inverse
+  const sd = Td[0][0];
+  const txd = Td[0][2];
+  const tyd = Td[1][2];
+  const TdInv = [
+    [1 / sd, 0, -txd / sd],
+    [0, 1 / sd, -tyd / sd],
+    [0, 0, 1],
+  ];
+
+  // Matrix multiply: TdInv * Hn * Ts
+  function matMul(a: number[][], b: number[][]): number[][] {
+    const r: number[][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+    for (let i = 0; i < 3; i++)
+      for (let j = 0; j < 3; j++)
+        for (let k = 0; k < 3; k++)
+          r[i][j] += a[i][k] * b[k][j];
+    return r;
+  }
+
+  const Ts3 = [
+    [Ts[0][0], Ts[0][1], Ts[0][2]],
+    [Ts[1][0], Ts[1][1], Ts[1][2]],
+    [0, 0, 1],
+  ];
+
+  const H = matMul(matMul(TdInv, Hn), Ts3);
+
+  // Flatten and normalize so H[2][2] = 1
+  const scale = H[2][2] || 1;
+  return [
+    H[0][0] / scale, H[0][1] / scale, H[0][2] / scale,
+    H[1][0] / scale, H[1][1] / scale, H[1][2] / scale,
+    H[2][0] / scale, H[2][1] / scale, 1,
+  ];
 }
 
 /**
  * Fit a line through 2D points using iterative least squares with outlier rejection.
- * First fits all points, then removes outliers (>2 MAD from line), refits.
+ * Uses RANSAC-like approach: fit, remove outliers (>2.5 MAD), refit.
  */
 function fitLine(points: Point[]): { isVertical: boolean; slope: number; intercept: number; avgX: number } {
   const n = points.length;
@@ -108,21 +168,21 @@ function fitLine(points: Point[]): { isVertical: boolean; slope: number; interce
     return { isVertical: false, slope, intercept, avgX };
   }
 
-  // First pass: fit all points
   let fit = lsq(points);
   if (fit.isVertical) return fit;
 
-  // Compute residuals
-  const residuals = points.map(p => Math.abs(p.y - (fit.slope * p.x + fit.intercept)));
-  const sortedRes = [...residuals].sort((a, b) => a - b);
-  const medianRes = sortedRes[Math.floor(sortedRes.length / 2)];
-  const mad = Math.max(1, medianRes * 1.4826); // MAD to std estimate
+  // Two rounds of outlier rejection for more robust fits
+  for (let round = 0; round < 2; round++) {
+    const residuals = points.map(p => Math.abs(p.y - (fit.slope * p.x + fit.intercept)));
+    const sortedRes = [...residuals].sort((a, b) => a - b);
+    const medianRes = sortedRes[Math.floor(sortedRes.length / 2)];
+    const mad = Math.max(0.5, medianRes * 1.4826);
 
-  // Remove outliers (> 2 MAD)
-  const inliers = points.filter((_, i) => residuals[i] < 2.5 * mad);
-
-  if (inliers.length >= Math.max(3, n * 0.4)) {
-    fit = lsq(inliers);
+    const inliers = points.filter((_, i) => residuals[i] < 2.5 * mad);
+    if (inliers.length >= Math.max(3, n * 0.3)) {
+      fit = lsq(inliers);
+      if (fit.isVertical) return fit;
+    }
   }
 
   return fit;
@@ -132,11 +192,7 @@ function fitLine(points: Point[]): { isVertical: boolean; slope: number; interce
  * Detect the 4 corners of the card by fitting lines through edge scan points
  * and finding their intersections.
  *
- * @param leftEdges - array of {x, y} points along the left edge
- * @param rightEdges - array of {x, y} points along the right edge
- * @param topEdges - array of {x, y} points along the top edge
- * @param bottomEdges - array of {x, y} points along the bottom edge
- * @returns 4 corners in order: [topLeft, topRight, bottomRight, bottomLeft]
+ * Returns 4 corners in order: [topLeft, topRight, bottomRight, bottomLeft]
  */
 export function detectCorners(
   leftEdges: Point[],
@@ -144,30 +200,18 @@ export function detectCorners(
   topEdges: Point[],
   bottomEdges: Point[]
 ): Point[] {
-  // For left/right edges, we have (edgeX, scanY) points
-  // The line is: x = f(y), so we fit x = slope*y + intercept
-  // But fitLine assumes y = slope*x + intercept
-  // So for left/right, we swap x and y in the input, then swap back for intersection
-  // Left/Right: we want x as function of y → fit with y as "x" input, x as "y" output
+  // Left/Right: x = f(y), so swap x/y for fitting, then swap back
   const leftLineXofY = fitLine(leftEdges.map((p) => ({ x: p.y, y: p.x })));
   const rightLineXofY = fitLine(rightEdges.map((p) => ({ x: p.y, y: p.x })));
-  // Top/Bottom: we want y as function of x → standard fit
+  // Top/Bottom: y = f(x), standard fit
   const topLineYofX = fitLine(topEdges);
   const bottomLineYofX = fitLine(bottomEdges);
 
-  // Find corners by substitution
-  // Top-left: intersection of left edge and top edge
-  // Left: x = leftSlope * y + leftIntercept
-  // Top:  y = topSlope * x + topIntercept
-  // Substituting: y = topSlope * (leftSlope * y + leftIntercept) + topIntercept
-  // y = topSlope*leftSlope*y + topSlope*leftIntercept + topIntercept
-  // y(1 - topSlope*leftSlope) = topSlope*leftIntercept + topIntercept
   function findCorner(
     edgeLine: { isVertical: boolean; slope: number; intercept: number; avgX: number },
     borderLine: { isVertical: boolean; slope: number; intercept: number; avgX: number }
   ): Point {
-    // edgeLine: x = es*y + ei (fitted as y=slope*x+intercept where x→y, y→x)
-    // So: x = edgeLine.slope * y + edgeLine.intercept
+    // edgeLine: x = es*y + ei
     // borderLine: y = bs*x + bi
     // Substituting: y = bs*(es*y + ei) + bi = bs*es*y + bs*ei + bi
     // y(1 - bs*es) = bs*ei + bi
@@ -178,7 +222,6 @@ export function detectCorners(
 
     const denom = 1 - bs * es;
     if (Math.abs(denom) < 1e-10) {
-      // Fallback
       const y = bi;
       const x = es * y + ei;
       return { x, y };
@@ -198,12 +241,26 @@ export function detectCorners(
 }
 
 /**
- * High-level: warp an image so the card becomes a rectangle.
- * Takes the original image and detected corner positions.
- * Returns the warped image as a data URL.
+ * Ensure corners are in correct order [TL, TR, BR, BL].
+ * Sorts by position to handle any detection order issues.
+ */
+function orderCorners(corners: Point[]): Point[] {
+  // Sort by y to get top pair and bottom pair
+  const sorted = [...corners].sort((a, b) => a.y - b.y);
+  const topPair = sorted.slice(0, 2).sort((a, b) => a.x - b.x);
+  const bottomPair = sorted.slice(2, 4).sort((a, b) => a.x - b.x);
+
+  return [topPair[0], topPair[1], bottomPair[1], bottomPair[0]]; // TL, TR, BR, BL
+}
+
+/**
+ * Warp an image so the card becomes a perfect rectangle.
  *
- * Adds a small margin around the card (5%) so borders are visible,
- * and outputs at a high resolution for clarity.
+ * Key improvement: uses standard trading card aspect ratio (2.5" × 3.5" = 5:7)
+ * instead of trying to infer dimensions from the (potentially distorted) corners.
+ * This produces a clean, professional-looking warp like the competitors.
+ *
+ * Output resolution: 900×1260 (5:7 ratio) with 3% margin.
  */
 export function warpToRectangle(
   srcData: Uint8ClampedArray,
@@ -211,57 +268,49 @@ export function warpToRectangle(
   srcH: number,
   corners: Point[]
 ): string {
-  // Compute card dimensions from corners
-  const topWidth = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
-  const bottomWidth = Math.hypot(corners[2].x - corners[3].x, corners[2].y - corners[3].y);
-  const leftHeight = Math.hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y);
-  const rightHeight = Math.hypot(corners[2].x - corners[1].x, corners[2].y - corners[1].y);
+  // Order corners correctly
+  const ordered = orderCorners(corners);
 
-  const avgWidth = (topWidth + bottomWidth) / 2;
-  const avgHeight = (leftHeight + rightHeight) / 2;
+  // Standard trading card: 2.5" × 3.5" = 5:7 ratio
+  const CARD_W = 900;
+  const CARD_H = 1260; // 900 * 7/5
 
-  // Output at high resolution — scale up to at least 800px wide
-  const scaleFactor = Math.max(1, 800 / avgWidth);
-  const cardW = Math.round(avgWidth * scaleFactor);
-  const cardH = Math.round(avgHeight * scaleFactor);
+  // Small margin (3%) so the card edges are visible
+  const marginX = Math.round(CARD_W * 0.03);
+  const marginY = Math.round(CARD_H * 0.03);
+  const dstW = CARD_W + marginX * 2;
+  const dstH = CARD_H + marginY * 2;
 
-  // Add 5% margin around the card so borders are fully visible
-  const marginX = Math.round(cardW * 0.05);
-  const marginY = Math.round(cardH * 0.05);
-  const dstW = cardW + marginX * 2;
-  const dstH = cardH + marginY * 2;
-
-  // Destination corners with margin offset
+  // Destination: card fills the rectangle with margin
   const dstCorners: Point[] = [
-    { x: marginX, y: marginY },
-    { x: marginX + cardW - 1, y: marginY },
-    { x: marginX + cardW - 1, y: marginY + cardH - 1 },
-    { x: marginX, y: marginY + cardH - 1 },
+    { x: marginX, y: marginY },                     // TL
+    { x: marginX + CARD_W - 1, y: marginY },        // TR
+    { x: marginX + CARD_W - 1, y: marginY + CARD_H - 1 }, // BR
+    { x: marginX, y: marginY + CARD_H - 1 },        // BL
   ];
 
-  // Compute homography: dst → src (inverse mapping)
-  const H = solveHomography(dstCorners, corners);
+  // Homography: dst pixel → src pixel (inverse mapping)
+  const H = solveHomography(dstCorners, ordered);
 
   const canvas = document.createElement("canvas");
   canvas.width = dstW;
   canvas.height = dstH;
   const ctx = canvas.getContext("2d")!;
 
-  // Fill with dark background for margins
-  ctx.fillStyle = "#111111";
-  ctx.fillRect(0, 0, dstW, dstH);
-
   const dstImageData = ctx.createImageData(dstW, dstH);
   const dst = dstImageData.data;
 
-  // Fill background
+  // Fill with dark background
   for (let i = 0; i < dst.length; i += 4) {
-    dst[i] = 17; dst[i + 1] = 17; dst[i + 2] = 17; dst[i + 3] = 255;
+    dst[i] = 30; dst[i + 1] = 30; dst[i + 2] = 30; dst[i + 3] = 255;
   }
 
+  // Inverse warp with bilinear interpolation
   for (let dy = 0; dy < dstH; dy++) {
     for (let dx = 0; dx < dstW; dx++) {
       const denom = H[6] * dx + H[7] * dy + H[8];
+      if (Math.abs(denom) < 1e-10) continue;
+
       const sx = (H[0] * dx + H[1] * dy + H[2]) / denom;
       const sy = (H[3] * dx + H[4] * dy + H[5]) / denom;
 

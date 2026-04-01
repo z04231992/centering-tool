@@ -34,7 +34,7 @@ interface EdgePointData {
   bottomPts: Point[];
 }
 
-function loadImageData(imageSrc: string, maxDim = 600): Promise<{ data: Uint8ClampedArray; w: number; h: number }> {
+function loadImageData(imageSrc: string, maxDim = 800): Promise<{ data: Uint8ClampedArray; w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -299,7 +299,7 @@ function detectEdgesOnGray(
   // Apply LIGHTER blur for inner edge detection (radius=2)
   const blurredInner = boxBlur(rawGray, w, h, 2);
 
-  const numLines = 50;
+  const numLines = 80;
 
   // --- OUTER EDGES ---
   // Store both the 1D positions (for median) and full 2D points (for corner fitting)
@@ -313,8 +313,9 @@ function detectEdgesOnGray(
   const bottomPts: Point[] = [];
 
   for (let i = 0; i < numLines; i++) {
-    const y = Math.round(h * 0.15 + (h * 0.7 * i) / numLines);
-    const x = Math.round(w * 0.15 + (w * 0.7 * i) / numLines);
+    // Wider scan coverage (8% to 92%) to catch data near corners
+    const y = Math.round(h * 0.08 + (h * 0.84 * i) / numLines);
+    const x = Math.round(w * 0.08 + (w * 0.84 * i) / numLines);
 
     const l = scanLeft(blurredOuter, w, h, y, 1, Math.floor(w * 0.42));
     if (l !== null) { leftEdges.push(l); leftPts.push({ x: l, y }); }
@@ -501,8 +502,8 @@ export async function detectCardEdges(
       return firstPass.result;
     }
 
-    // Load full-resolution image for warping (not the downscaled detection image)
-    const fullRes = await loadImageData(imageSrc, 1200);
+    // Load high-resolution image for warping
+    const fullRes = await loadImageData(imageSrc, 2000);
     const scale = fullRes.w / w;
 
     // Scale corners to full-res coordinates
