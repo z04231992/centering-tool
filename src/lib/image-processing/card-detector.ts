@@ -533,9 +533,14 @@ export async function detectCardEdges(
 
     console.log("[Warp] Median rect:", `L:${medLeft.toFixed(0)} R:${medRight.toFixed(0)} T:${medTop.toFixed(0)} B:${medBottom.toFixed(0)} (${medW.toFixed(0)}x${medH.toFixed(0)})`);
 
-    // Try line-fitting corners, but validate against median rectangle
+    // Try line-fitting corners, then blend with median for stability
+    const medCorners = [
+      { x: medLeft, y: medTop }, { x: medRight, y: medTop },
+      { x: medRight, y: medBottom }, { x: medLeft, y: medBottom },
+    ];
+
     let corners: Point[];
-    const minPts = 15;
+    const minPts = 20;
     const hasEnoughPts = edgePoints.leftPts.length >= minPts && edgePoints.rightPts.length >= minPts &&
         edgePoints.topPts.length >= minPts && edgePoints.bottomPts.length >= minPts;
 
@@ -546,34 +551,33 @@ export async function detectCardEdges(
       );
       console.log("[Warp] Line-fit corners:", fitCorners.map(c => `(${c.x.toFixed(1)},${c.y.toFixed(1)})`).join(" "));
 
-      // Validate: each corner should be close to expected position (within 10% of card size)
-      const maxDrift = Math.max(medW, medH) * 0.10;
-      const expected = [
-        { x: medLeft, y: medTop }, { x: medRight, y: medTop },
-        { x: medRight, y: medBottom }, { x: medLeft, y: medBottom },
-      ];
-      const drifts = fitCorners.map((c, i) => Math.hypot(c.x - expected[i].x, c.y - expected[i].y));
-      const maxActualDrift = Math.max(...drifts);
-      console.log("[Warp] Corner drifts:", drifts.map(d => d.toFixed(1)).join(", "), `max=${maxActualDrift.toFixed(1)} limit=${maxDrift.toFixed(1)}`);
+      // Per-corner validation: only use line-fit if within 7% of card size
+      const maxDrift = Math.max(medW, medH) * 0.07;
+      const drifts = fitCorners.map((c, i) => Math.hypot(c.x - medCorners[i].x, c.y - medCorners[i].y));
+      console.log("[Warp] Corner drifts:", drifts.map(d => d.toFixed(1)).join(", "), `limit=${maxDrift.toFixed(1)}`);
 
-      if (maxActualDrift <= maxDrift) {
-        corners = fitCorners;
-        console.log("[Warp] Using line-fit corners (within tolerance)");
-      } else {
-        console.warn("[Warp] Line-fit corners drifted too far, falling back to median rectangle");
-        corners = expected;
-      }
+      // Blend: for each corner, if drift is within tolerance, blend 60% line-fit + 40% median
+      // If drift is too large, use pure median for that corner
+      const BLEND = 0.6;
+      corners = fitCorners.map((fit, i) => {
+        if (drifts[i] <= maxDrift) {
+          return {
+            x: fit.x * BLEND + medCorners[i].x * (1 - BLEND),
+            y: fit.y * BLEND + medCorners[i].y * (1 - BLEND),
+          };
+        }
+        console.warn(`[Warp] Corner ${i} drift ${drifts[i].toFixed(1)} > ${maxDrift.toFixed(1)}, using median`);
+        return medCorners[i];
+      });
+      console.log("[Warp] Blended corners:", corners.map(c => `(${c.x.toFixed(1)},${c.y.toFixed(1)})`).join(" "));
     } else {
       console.warn("[Warp] Not enough edge points, using median rectangle as corners");
-      corners = [
-        { x: medLeft, y: medTop }, { x: medRight, y: medTop },
-        { x: medRight, y: medBottom }, { x: medLeft, y: medBottom },
-      ];
+      corners = medCorners;
     }
 
-    // Expand corners outward slightly (2%) to ensure card edges are fully included
-    const expandX = medW * 0.02;
-    const expandY = medH * 0.02;
+    // Expand corners outward slightly (3%) to ensure card edges are fully visible
+    const expandX = medW * 0.03;
+    const expandY = medH * 0.03;
     corners = [
       { x: Math.max(0, corners[0].x - expandX), y: Math.max(0, corners[0].y - expandY) },
       { x: Math.min(w - 1, corners[1].x + expandX), y: Math.max(0, corners[1].y - expandY) },
