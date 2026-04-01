@@ -2,7 +2,6 @@ import { useGradeCalculation } from "@/hooks/useGradeCalculation";
 import { CenteringRatioDisplay } from "./CenteringRatioDisplay";
 import { GradeCard } from "./GradeCard";
 import { useSettingsStore } from "@/stores/settings-store";
-import { ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const guideColors = [
@@ -28,20 +27,6 @@ export function GradeComparison() {
 
   return (
     <div className="space-y-4">
-      {/* Help Me Checkout Promo */}
-      <a
-        href="https://www.helpmecheckout.com/join?ref=HMC-BETRAYAL-2690"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block rounded-xl border border-primary/30 bg-primary/5 p-4 hover:bg-primary/10 transition-all group"
-      >
-        <p className="text-sm text-muted-foreground mb-2">Need help getting product?</p>
-        <span className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-full bg-primary text-primary-foreground group-hover:bg-primary/90 transition-all">
-          Join Help Me Checkout!
-          <ExternalLink className="w-3.5 h-3.5" />
-        </span>
-      </a>
-
       {!hasFront || !frontRatio ? (
         <div className="text-center py-12 text-muted-foreground">
           <p className="text-lg">Upload a card to see centering grades</p>
