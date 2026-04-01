@@ -63,22 +63,22 @@ export function CardOverlay({ outer, inner, onOuterChange, onInnerChange }: Card
         {/* Hatched area between outer and inner (the border zone) */}
         <rect
           x={`${outer.left}%`} y={`${outer.top}%`}
-          width={`${outer.right - outer.left}%`} height={`${inner.top - outer.top}%`}
+          width={`${Math.max(0, outer.right - outer.left)}%`} height={`${Math.max(0, inner.top - outer.top)}%`}
           fill={`url(#${patternId})`}
         />
         <rect
           x={`${outer.left}%`} y={`${inner.bottom}%`}
-          width={`${outer.right - outer.left}%`} height={`${outer.bottom - inner.bottom}%`}
+          width={`${Math.max(0, outer.right - outer.left)}%`} height={`${Math.max(0, outer.bottom - inner.bottom)}%`}
           fill={`url(#${patternId})`}
         />
         <rect
           x={`${outer.left}%`} y={`${inner.top}%`}
-          width={`${inner.left - outer.left}%`} height={`${inner.bottom - inner.top}%`}
+          width={`${Math.max(0, inner.left - outer.left)}%`} height={`${Math.max(0, inner.bottom - inner.top)}%`}
           fill={`url(#${patternId})`}
         />
         <rect
           x={`${inner.right}%`} y={`${inner.top}%`}
-          width={`${outer.right - inner.right}%`} height={`${inner.bottom - inner.top}%`}
+          width={`${Math.max(0, outer.right - inner.right)}%`} height={`${Math.max(0, inner.bottom - inner.top)}%`}
           fill={`url(#${patternId})`}
         />
 

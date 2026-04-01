@@ -345,7 +345,6 @@ function detectEdgesOnGray(
   // Top/bottom scans: only scan columns within the card's horizontal extent (with 5% padding)
   const numLines = 80;
   const padX = rCardW * 0.05;
-  const padY = rCardH * 0.05;
 
   const leftEdges: number[] = [], rightEdges: number[] = [];
   const topEdges: number[] = [], bottomEdges: number[] = [];
