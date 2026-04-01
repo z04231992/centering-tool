@@ -5,7 +5,6 @@ import { CardOverlay } from "./CardOverlay";
 import { Scan, Loader2, Upload, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
-import { outerInnerToMeasurement, marginsToRatio } from "@/lib/grading/ratio-utils";
 
 export function CardCanvas() {
   const { activeSide, front, back, reset, setGuide } = useMeasurementStore();
@@ -29,10 +28,6 @@ export function CardCanvas() {
   if (!side.imageSrc) {
     return <ImageUploader />;
   }
-
-  // Compute live ratios from current guide positions
-  const measurement = outerInnerToMeasurement(side.outer, side.inner);
-  const ratio = marginsToRatio(measurement);
 
   async function runDetection(warpOverride?: boolean) {
     if (!side.imageSrc) return;
@@ -120,44 +115,7 @@ export function CardCanvas() {
         </label>
       </div>
 
-      {/* Live Centering Ratios */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-card border border-border rounded-xl p-4 text-center">
-          <p className="text-sm text-muted-foreground font-medium">L | R</p>
-          <p className="text-3xl font-bold font-mono mt-1">
-            {ratio.horizontal.leftPercent}% <span className="text-muted-foreground">|</span> {ratio.horizontal.rightPercent}%
-          </p>
-        </div>
-        <div className="bg-card border border-border rounded-xl p-4 text-center">
-          <p className="text-sm text-muted-foreground font-medium">T | B</p>
-          <p className="text-3xl font-bold font-mono mt-1">
-            {ratio.vertical.topPercent}% <span className="text-muted-foreground">|</span> {ratio.vertical.bottomPercent}%
-          </p>
-        </div>
-      </div>
-
-      {/*
-        Card Image with Overlay — fills available width, no restrictive max-height.
-        The inline-block shrink-wraps to exact image dimensions so overlay aligns 1:1.
-      */}
-      <div className="flex justify-center w-full">
-        <div className="relative inline-block rounded-xl overflow-hidden bg-black w-full">
-          <img
-            src={getDisplaySrc()}
-            alt={`Card ${activeSide}`}
-            className="block w-full select-none"
-            draggable={false}
-          />
-          <CardOverlay
-            outer={side.outer}
-            inner={side.inner}
-            onOuterChange={handleOuterChange}
-            onInnerChange={handleInnerChange}
-          />
-        </div>
-      </div>
-
-      {/* Action Buttons */}
+      {/* Action Buttons — above the card */}
       <div className="flex gap-2 justify-center flex-wrap">
         <button
           onClick={() => runDetection()}
@@ -186,6 +144,27 @@ export function CardCanvas() {
           <Upload className="w-4 h-4" />
           New Photo
         </button>
+      </div>
+
+      {/*
+        Card Image with Overlay — fills available width, no restrictive max-height.
+        The inline-block shrink-wraps to exact image dimensions so overlay aligns 1:1.
+      */}
+      <div className="flex justify-center w-full">
+        <div className="relative inline-block rounded-xl overflow-hidden bg-black w-full">
+          <img
+            src={getDisplaySrc()}
+            alt={`Card ${activeSide}`}
+            className="block w-full select-none"
+            draggable={false}
+          />
+          <CardOverlay
+            outer={side.outer}
+            inner={side.inner}
+            onOuterChange={handleOuterChange}
+            onInnerChange={handleInnerChange}
+          />
+        </div>
       </div>
 
       {/* Legend */}

@@ -40,10 +40,14 @@ export function Header() {
         }}
       >
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <a
+            href="/"
+            onClick={(e) => { e.preventDefault(); window.location.reload(); }}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
+          >
             <img src="/pikachu-logo.png" alt="Logo" className="w-8 h-8" style={{ imageRendering: "pixelated" }} />
             <span className="font-semibold text-lg text-foreground">Centering Tool</span>
-          </div>
+          </a>
         </div>
       </header>
     </>
