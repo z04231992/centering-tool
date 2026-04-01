@@ -493,14 +493,53 @@ export async function detectCardEdges(
     );
 
     console.log("[Warp] Detected corners:", corners.map(c => `(${c.x.toFixed(1)},${c.y.toFixed(1)})`).join(" "));
+    console.log("[Warp] Edge point counts:", {
+      left: edgePoints.leftPts.length,
+      right: edgePoints.rightPts.length,
+      top: edgePoints.topPts.length,
+      bottom: edgePoints.bottomPts.length,
+    });
 
-    // Sanity check: corners should form a reasonable quadrilateral
-    const topW = Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y);
-    const leftH = Math.hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y);
+    // Sanity checks
+    const [tl, tr, br, bl] = corners;
+
+    // 1. Corners should form a reasonable quadrilateral
+    const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+    const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
+    const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+    const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
+
     if (topW < w * 0.1 || leftH < h * 0.1) {
       console.warn("[Warp] Corners too close together, returning unwrapped");
       return firstPass.result;
     }
+
+    // 2. Top/bottom widths should be similar (not wildly different)
+    const widthRatio = Math.min(topW, botW) / Math.max(topW, botW);
+    const heightRatio = Math.min(leftH, rightH) / Math.max(leftH, rightH);
+    if (widthRatio < 0.5 || heightRatio < 0.5) {
+      console.warn("[Warp] Corners form non-rectangular shape, returning unwrapped", { widthRatio, heightRatio });
+      return firstPass.result;
+    }
+
+    // 3. TL should be top-left, TR should be top-right, etc.
+    if (tl.x > tr.x || bl.x > br.x || tl.y > bl.y || tr.y > br.y) {
+      console.warn("[Warp] Corner ordering invalid, returning unwrapped");
+      return firstPass.result;
+    }
+
+    // 4. All corners should be within the image
+    const allInBounds = corners.every(c => c.x >= 0 && c.x < w && c.y >= 0 && c.y < h);
+    if (!allInBounds) {
+      console.warn("[Warp] Corners out of bounds, returning unwrapped");
+      return firstPass.result;
+    }
+
+    console.log("[Warp] Validation passed. Sides:", {
+      topW: topW.toFixed(1), botW: botW.toFixed(1),
+      leftH: leftH.toFixed(1), rightH: rightH.toFixed(1),
+      widthRatio: widthRatio.toFixed(3), heightRatio: heightRatio.toFixed(3),
+    });
 
     // Load high-resolution image for warping
     const fullRes = await loadImageData(imageSrc, 2000);
