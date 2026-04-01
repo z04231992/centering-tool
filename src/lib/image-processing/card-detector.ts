@@ -299,40 +299,87 @@ function detectEdgesOnGray(
   // Apply LIGHTER blur for inner edge detection (radius=2)
   const blurredInner = boxBlur(rawGray, w, h, 2);
 
-  const numLines = 80;
+  // ========== STAGE 1: Rough scan to find approximate card rectangle ==========
+  const roughLines = 40;
+  const roughLeft: number[] = [], roughRight: number[] = [];
+  const roughTop: number[] = [], roughBottom: number[] = [];
 
-  // --- OUTER EDGES ---
-  // Store both the 1D positions (for median) and full 2D points (for corner fitting)
-  const leftEdges: number[] = [];
-  const rightEdges: number[] = [];
-  const topEdges: number[] = [];
-  const bottomEdges: number[] = [];
-  const leftPts: Point[] = [];
-  const rightPts: Point[] = [];
-  const topPts: Point[] = [];
-  const bottomPts: Point[] = [];
+  for (let i = 0; i < roughLines; i++) {
+    const y = Math.round(h * 0.15 + (h * 0.7 * i) / roughLines);
+    const x = Math.round(w * 0.15 + (w * 0.7 * i) / roughLines);
+
+    const l = scanLeft(blurredOuter, w, h, y, 1, Math.floor(w * 0.45));
+    if (l !== null) roughLeft.push(l);
+    const r = scanRight(blurredOuter, w, h, y, Math.floor(w * 0.55), w - 1);
+    if (r !== null) roughRight.push(r);
+    const t = scanTop(blurredOuter, w, h, x, 1, Math.floor(h * 0.45));
+    if (t !== null) roughTop.push(t);
+    const b = scanBottom(blurredOuter, w, h, x, Math.floor(h * 0.55), h - 1);
+    if (b !== null) roughBottom.push(b);
+  }
+
+  const minRoughHits = 5;
+  if (roughLeft.length < minRoughHits || roughRight.length < minRoughHits ||
+      roughTop.length < minRoughHits || roughBottom.length < minRoughHits) {
+    console.log(`[Edge Detection] ${label} rough scan failed: L:${roughLeft.length} R:${roughRight.length} T:${roughTop.length} B:${roughBottom.length}`);
+    return null;
+  }
+
+  // Rough card rectangle
+  const rLeft = median(roughLeft);
+  const rRight = median(roughRight);
+  const rTop = median(roughTop);
+  const rBottom = median(roughBottom);
+  const rCardW = rRight - rLeft;
+  const rCardH = rBottom - rTop;
+
+  if (rCardW < w * 0.15 || rCardH < h * 0.15) {
+    console.warn(`[Edge Detection] ${label} card too small in rough scan`);
+    return null;
+  }
+
+  console.log(`[Edge Detection] ${label} rough rect: L:${rLeft.toFixed(0)} R:${rRight.toFixed(0)} T:${rTop.toFixed(0)} B:${rBottom.toFixed(0)} (${rCardW.toFixed(0)}x${rCardH.toFixed(0)})`);
+
+  // ========== STAGE 2: Refined scan constrained to card area ==========
+  // Left/right scans: only scan rows within the card's vertical extent (with 5% padding)
+  // Top/bottom scans: only scan columns within the card's horizontal extent (with 5% padding)
+  const numLines = 80;
+  const padX = rCardW * 0.05;
+  const padY = rCardH * 0.05;
+
+  const leftEdges: number[] = [], rightEdges: number[] = [];
+  const topEdges: number[] = [], bottomEdges: number[] = [];
+  const leftPts: Point[] = [], rightPts: Point[] = [];
+  const topPts: Point[] = [], bottomPts: Point[] = [];
 
   for (let i = 0; i < numLines; i++) {
-    // Wider scan coverage (8% to 92%) to catch data near corners
-    const y = Math.round(h * 0.08 + (h * 0.84 * i) / numLines);
-    const x = Math.round(w * 0.08 + (w * 0.84 * i) / numLines);
+    const t = i / (numLines - 1); // 0 to 1
 
-    const l = scanLeft(blurredOuter, w, h, y, 1, Math.floor(w * 0.42));
-    if (l !== null) { leftEdges.push(l); leftPts.push({ x: l, y }); }
+    // Left/right: scan rows within the card's vertical range (5% to 95% of card height)
+    const scanY = Math.round(rTop + rCardH * 0.05 + rCardH * 0.9 * t);
+    // Top/bottom: scan columns within the card's horizontal range
+    const scanX = Math.round(rLeft + padX + (rCardW - 2 * padX) * t);
 
-    const r = scanRight(blurredOuter, w, h, y, Math.floor(w * 0.58), w - 1);
-    if (r !== null) { rightEdges.push(r); rightPts.push({ x: r, y }); }
+    // Left edge: scan from image left to card center
+    const l = scanLeft(blurredOuter, w, h, scanY, 1, Math.round(rLeft + rCardW * 0.4));
+    if (l !== null) { leftEdges.push(l); leftPts.push({ x: l, y: scanY }); }
 
-    const t = scanTop(blurredOuter, w, h, x, 1, Math.floor(h * 0.42));
-    if (t !== null) { topEdges.push(t); topPts.push({ x, y: t }); }
+    // Right edge: scan from card center to image right
+    const r = scanRight(blurredOuter, w, h, scanY, Math.round(rRight - rCardW * 0.4), w - 1);
+    if (r !== null) { rightEdges.push(r); rightPts.push({ x: r, y: scanY }); }
 
-    const b = scanBottom(blurredOuter, w, h, x, Math.floor(h * 0.58), h - 1);
-    if (b !== null) { bottomEdges.push(b); bottomPts.push({ x, y: b }); }
+    // Top edge: scan from image top downward (ONLY within card's horizontal extent)
+    const tp = scanTop(blurredOuter, w, h, scanX, 1, Math.round(rTop + rCardH * 0.4));
+    if (tp !== null) { topEdges.push(tp); topPts.push({ x: scanX, y: tp }); }
+
+    // Bottom edge: scan from image bottom upward (ONLY within card's horizontal extent)
+    const bp = scanBottom(blurredOuter, w, h, scanX, Math.round(rBottom - rCardH * 0.4), h - 1);
+    if (bp !== null) { bottomEdges.push(bp); bottomPts.push({ x: scanX, y: bp }); }
   }
 
   console.log(`[Edge Detection] ${label} outer hits: L:${leftEdges.length} R:${rightEdges.length} T:${topEdges.length} B:${bottomEdges.length}`);
 
-  const minHits = Math.floor(numLines * 0.2);
+  const minHits = Math.floor(numLines * 0.15);
   if (leftEdges.length < minHits || rightEdges.length < minHits ||
       topEdges.length < minHits || bottomEdges.length < minHits) {
     return null;
