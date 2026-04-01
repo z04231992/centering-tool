@@ -522,71 +522,67 @@ export async function detectCardEdges(
   // --- PERSPECTIVE WARP ---
   try {
     const { edgePoints } = firstPass;
+    const { outer } = firstPass.result;
 
-    // Need enough points to fit lines (at least 5 per edge)
-    const minPts = 5;
-    if (edgePoints.leftPts.length < minPts || edgePoints.rightPts.length < minPts ||
-        edgePoints.topPts.length < minPts || edgePoints.bottomPts.length < minPts) {
-      console.warn("[Warp] Not enough edge points for corner detection, returning unwrapped");
-      return firstPass.result;
+    // Median-based card rectangle (pixels)
+    const medLeft = (outer.left / 100) * w;
+    const medRight = (outer.right / 100) * w;
+    const medTop = (outer.top / 100) * h;
+    const medBottom = (outer.bottom / 100) * h;
+    const medW = medRight - medLeft;
+    const medH = medBottom - medTop;
+
+    console.log("[Warp] Median rect:", `L:${medLeft.toFixed(0)} R:${medRight.toFixed(0)} T:${medTop.toFixed(0)} B:${medBottom.toFixed(0)} (${medW.toFixed(0)}x${medH.toFixed(0)})`);
+
+    // Try line-fitting corners, but validate against median rectangle
+    let corners: Point[];
+    const minPts = 15;
+    const hasEnoughPts = edgePoints.leftPts.length >= minPts && edgePoints.rightPts.length >= minPts &&
+        edgePoints.topPts.length >= minPts && edgePoints.bottomPts.length >= minPts;
+
+    if (hasEnoughPts) {
+      const fitCorners = detectCorners(
+        edgePoints.leftPts, edgePoints.rightPts,
+        edgePoints.topPts, edgePoints.bottomPts
+      );
+      console.log("[Warp] Line-fit corners:", fitCorners.map(c => `(${c.x.toFixed(1)},${c.y.toFixed(1)})`).join(" "));
+
+      // Validate: each corner should be close to expected position (within 10% of card size)
+      const maxDrift = Math.max(medW, medH) * 0.10;
+      const expected = [
+        { x: medLeft, y: medTop }, { x: medRight, y: medTop },
+        { x: medRight, y: medBottom }, { x: medLeft, y: medBottom },
+      ];
+      const drifts = fitCorners.map((c, i) => Math.hypot(c.x - expected[i].x, c.y - expected[i].y));
+      const maxActualDrift = Math.max(...drifts);
+      console.log("[Warp] Corner drifts:", drifts.map(d => d.toFixed(1)).join(", "), `max=${maxActualDrift.toFixed(1)} limit=${maxDrift.toFixed(1)}`);
+
+      if (maxActualDrift <= maxDrift) {
+        corners = fitCorners;
+        console.log("[Warp] Using line-fit corners (within tolerance)");
+      } else {
+        console.warn("[Warp] Line-fit corners drifted too far, falling back to median rectangle");
+        corners = expected;
+      }
+    } else {
+      console.warn("[Warp] Not enough edge points, using median rectangle as corners");
+      corners = [
+        { x: medLeft, y: medTop }, { x: medRight, y: medTop },
+        { x: medRight, y: medBottom }, { x: medLeft, y: medBottom },
+      ];
     }
 
-    // Detect 4 corners by fitting lines through edge points
-    const corners = detectCorners(
-      edgePoints.leftPts,
-      edgePoints.rightPts,
-      edgePoints.topPts,
-      edgePoints.bottomPts
-    );
+    // Expand corners outward slightly (2%) to ensure card edges are fully included
+    const expandX = medW * 0.02;
+    const expandY = medH * 0.02;
+    corners = [
+      { x: Math.max(0, corners[0].x - expandX), y: Math.max(0, corners[0].y - expandY) },
+      { x: Math.min(w - 1, corners[1].x + expandX), y: Math.max(0, corners[1].y - expandY) },
+      { x: Math.min(w - 1, corners[2].x + expandX), y: Math.min(h - 1, corners[2].y + expandY) },
+      { x: Math.max(0, corners[3].x - expandX), y: Math.min(h - 1, corners[3].y + expandY) },
+    ];
 
-    console.log("[Warp] Detected corners:", corners.map(c => `(${c.x.toFixed(1)},${c.y.toFixed(1)})`).join(" "));
-    console.log("[Warp] Edge point counts:", {
-      left: edgePoints.leftPts.length,
-      right: edgePoints.rightPts.length,
-      top: edgePoints.topPts.length,
-      bottom: edgePoints.bottomPts.length,
-    });
-
-    // Sanity checks
-    const [tl, tr, br, bl] = corners;
-
-    // 1. Corners should form a reasonable quadrilateral
-    const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
-    const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
-    const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
-    const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
-
-    if (topW < w * 0.1 || leftH < h * 0.1) {
-      console.warn("[Warp] Corners too close together, returning unwrapped");
-      return firstPass.result;
-    }
-
-    // 2. Top/bottom widths should be similar (not wildly different)
-    const widthRatio = Math.min(topW, botW) / Math.max(topW, botW);
-    const heightRatio = Math.min(leftH, rightH) / Math.max(leftH, rightH);
-    if (widthRatio < 0.5 || heightRatio < 0.5) {
-      console.warn("[Warp] Corners form non-rectangular shape, returning unwrapped", { widthRatio, heightRatio });
-      return firstPass.result;
-    }
-
-    // 3. TL should be top-left, TR should be top-right, etc.
-    if (tl.x > tr.x || bl.x > br.x || tl.y > bl.y || tr.y > br.y) {
-      console.warn("[Warp] Corner ordering invalid, returning unwrapped");
-      return firstPass.result;
-    }
-
-    // 4. All corners should be within the image
-    const allInBounds = corners.every(c => c.x >= 0 && c.x < w && c.y >= 0 && c.y < h);
-    if (!allInBounds) {
-      console.warn("[Warp] Corners out of bounds, returning unwrapped");
-      return firstPass.result;
-    }
-
-    console.log("[Warp] Validation passed. Sides:", {
-      topW: topW.toFixed(1), botW: botW.toFixed(1),
-      leftH: leftH.toFixed(1), rightH: rightH.toFixed(1),
-      widthRatio: widthRatio.toFixed(3), heightRatio: heightRatio.toFixed(3),
-    });
+    console.log("[Warp] Final corners (expanded):", corners.map(c => `(${c.x.toFixed(1)},${c.y.toFixed(1)})`).join(" "));
 
     // Load high-resolution image for warping
     const fullRes = await loadImageData(imageSrc, 2000);
