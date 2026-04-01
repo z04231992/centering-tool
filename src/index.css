@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Grading company brand colors */
+  --color-psa: #E31937;
+  --color-bgs: #0055A5;
+  --color-cgc: #00A651;
+  --color-sgc: #FFB81C;
+  --color-tag: #7B2D8B;
+  --color-ace: #1A1A2E;
+
+  /* Forest green dark theme (helpmecheckout.com inspired) */
+  --color-background: #0d1b16;
+  --color-foreground: #f6fff8;
+  --color-card: #111e19;
+  --color-card-foreground: #f6fff8;
+  --color-popover: #111e19;
+  --color-popover-foreground: #f6fff8;
+  --color-primary: #6b9080;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #1a2b24;
+  --color-secondary-foreground: #a4c3b2;
+  --color-muted: #1a2b24;
+  --color-muted-foreground: #a4c3b2;
+  --color-accent: #1a2b24;
+  --color-accent-foreground: #cce3de;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #1e3029;
+  --color-input: #2a4038;
+  --color-ring: #6b9080;
+  --radius: 0.5rem;
+}
+
+@layer base {
+  .dark {
+    --color-background: #0d1b16;
+    --color-foreground: #f6fff8;
+    --color-card: #111e19;
+    --color-card-foreground: #f6fff8;
+    --color-popover: #111e19;
+    --color-popover-foreground: #f6fff8;
+    --color-primary: #6b9080;
+    --color-primary-foreground: #ffffff;
+    --color-secondary: #1a2b24;
+    --color-secondary-foreground: #a4c3b2;
+    --color-muted: #1a2b24;
+    --color-muted-foreground: #a4c3b2;
+    --color-accent: #1a2b24;
+    --color-accent-foreground: #cce3de;
+    --color-destructive: #ef4444;
+    --color-destructive-foreground: #ffffff;
+    --color-border: #1e3029;
+    --color-input: #2a4038;
+    --color-ring: #6b9080;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  min-height: 100dvh;
+}
+
+* {
+  border-color: var(--color-border);
+}
