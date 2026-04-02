@@ -195,21 +195,34 @@ export async function generateShareImage(options: ShareExportOptions): Promise<s
     ctx.fillText("Front Centering", px, y + 13);
     y += 36;
 
-    // Horizontal ratio
+    // Two columns — each centered in its half
+    const colW = (panelCardW - PAD * 2) / 2;
+    const col1Center = px + colW / 2;
+    const col2Center = px + colW + colW / 2;
+
+    // Horizontal ratio — centered in left column
     ctx.fillStyle = THEME.foreground;
     ctx.font = "bold 34px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText(`${hL}/${hR}`, px, y + 30);
+    const hBoldText = `${hL}/${hR}`;
+    const hBoldW = ctx.measureText(hBoldText).width;
+    ctx.fillText(hBoldText, col1Center - hBoldW / 2, y + 30);
 
-    // Vertical ratio
-    const colW = (panelCardW - PAD * 2) / 2;
-    ctx.fillText(`${vT}/${vB}`, px + colW, y + 30);
-    y += 46;
+    // Vertical ratio — centered in right column
+    const vBoldText = `${vT}/${vB}`;
+    const vBoldW = ctx.measureText(vBoldText).width;
+    ctx.fillText(vBoldText, col2Center - vBoldW / 2, y + 30);
+    y += 50;
 
-    // Sub-labels (more spacing below the big numbers)
+    // Sub-labels — centered under the bold numbers
     ctx.fillStyle = THEME.mutedFg;
     ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText(`L ${hL} / R ${hR}`, px, y);
-    ctx.fillText(`T ${vT} / B ${vB}`, px + colW, y);
+    const hSubText = `L ${hL} / R ${hR}`;
+    const hSubW = ctx.measureText(hSubText).width;
+    ctx.fillText(hSubText, col1Center - hSubW / 2, y);
+
+    const vSubText = `T ${vT} / B ${vB}`;
+    const vSubW = ctx.measureText(vSubText).width;
+    ctx.fillText(vSubText, col2Center - vSubW / 2, y);
     y += 28;
 
     // Separator line
