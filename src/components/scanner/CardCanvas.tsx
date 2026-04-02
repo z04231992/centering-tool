@@ -143,8 +143,8 @@ export function CardCanvas() {
             </div>
             <input
               type="range"
-              min={-10}
-              max={10}
+              min={-45}
+              max={45}
               step={0.1}
               value={rotation}
               onChange={(e) => handleRotationSlide(parseFloat(e.target.value))}
