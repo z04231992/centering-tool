@@ -2,10 +2,12 @@ import { useMeasurementStore } from "@/stores/measurement-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { ImageUploader } from "./ImageUploader";
 import { CardOverlay } from "./CardOverlay";
-import { Scan, Loader2, Upload, Eye, EyeOff, RotateCcw, RotateCw } from "lucide-react";
+import { Scan, Loader2, Upload, Eye, EyeOff, RotateCcw, RotateCw, Share2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
 import { rotateImageSrc } from "@/lib/image-processing/rotate";
+import { generateShareImage, downloadShareImage } from "@/lib/share-export";
+import { useGradeCalculation } from "@/hooks/useGradeCalculation";
 
 export function CardCanvas() {
   const { activeSide, front, back, reset, setGuide } = useMeasurementStore();
@@ -19,6 +21,8 @@ export function CardCanvas() {
   const lastAnalyzedSrc = useRef<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(0);
+  const [sharing, setSharing] = useState(false);
+  const { frontRatio, backRatio, grades, hasBack } = useGradeCalculation();
 
   // Auto-detect when a new image is uploaded
   useEffect(() => {
@@ -106,6 +110,29 @@ export function CardCanvas() {
     return side.imageSrc!;
   };
 
+  const handleShare = async () => {
+    if (!side.imageSrc) return;
+    setSharing(true);
+    try {
+      const dataUrl = await generateShareImage({
+        imageSrc: getDisplaySrc(),
+        outer: side.outer,
+        inner: side.inner,
+        outerColor: outerGuideColor,
+        innerColor: innerGuideColor,
+        frontRatio,
+        backRatio,
+        grades,
+        hasBack,
+      });
+      downloadShareImage(dataUrl);
+    } catch (err) {
+      console.error("[Share]", err);
+    } finally {
+      setSharing(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Loading state */}
@@ -190,6 +217,14 @@ export function CardCanvas() {
         >
           <Upload className="w-4 h-4" />
           New Photo
+        </button>
+        <button
+          onClick={handleShare}
+          disabled={sharing || !side.imageSrc}
+          className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-full bg-green-600 hover:bg-green-700 text-white transition-all disabled:opacity-50"
+        >
+          {sharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+          {sharing ? "Exporting..." : "Share"}
         </button>
       </div>
 
