@@ -193,24 +193,24 @@ export async function generateShareImage(options: ShareExportOptions): Promise<s
     ctx.fillStyle = THEME.mutedFg;
     ctx.font = "13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
     ctx.fillText("Front Centering", px, y + 13);
-    y += 32;
+    y += 36;
 
     // Horizontal ratio
     ctx.fillStyle = THEME.foreground;
-    ctx.font = "bold 32px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText(`${hL}/${hR}`, px, y + 28);
+    ctx.font = "bold 34px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    ctx.fillText(`${hL}/${hR}`, px, y + 30);
 
     // Vertical ratio
     const colW = (panelCardW - PAD * 2) / 2;
-    ctx.fillText(`${vT}/${vB}`, px + colW, y + 28);
-    y += 38;
+    ctx.fillText(`${vT}/${vB}`, px + colW, y + 30);
+    y += 46;
 
-    // Sub-labels
+    // Sub-labels (more spacing below the big numbers)
     ctx.fillStyle = THEME.mutedFg;
-    ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
     ctx.fillText(`L ${hL} / R ${hR}`, px, y);
     ctx.fillText(`T ${vT} / B ${vB}`, px + colW, y);
-    y += 24;
+    y += 28;
 
     // Separator line
     ctx.strokeStyle = THEME.border;
@@ -228,12 +228,12 @@ export async function generateShareImage(options: ShareExportOptions): Promise<s
   ctx.fillText(hasBack ? "Grade Comparison" : "Grade Comparison (Front Only)", px, y + 13);
   y += 30;
 
-  // Grade cards in 3x2 grid
+  // Grade cards in 3x2 grid — larger and more readable
   const availW = panelCardW - PAD * 2;
   const gradeGap = 8;
   const cols = 3;
   const gradeCardW = Math.floor((availW - gradeGap * (cols - 1)) / cols);
-  const gradeCardH = 95;
+  const gradeCardH = 110;
 
   for (let i = 0; i < grades.length; i++) {
     const col = i % cols;
@@ -255,39 +255,39 @@ export async function generateShareImage(options: ShareExportOptions): Promise<s
     // Company color dot + name
     ctx.fillStyle = grade.company.color;
     ctx.beginPath();
-    ctx.arc(gx + 12, gy + 16, 5, 0, Math.PI * 2);
+    ctx.arc(gx + 14, gy + 18, 6, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = hasGrade ? THEME.foreground : THEME.mutedFg;
-    ctx.font = "bold 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.fillText(grade.company.name, gx + 22, gy + 20);
+    ctx.font = "bold 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    ctx.fillText(grade.company.name, gx + 26, gy + 22);
 
     if (hasGrade) {
-      // Grade number
+      // Grade number — big and bold
       ctx.fillStyle = grade.company.color;
-      ctx.font = "bold 28px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-      ctx.fillText(String(grade.bestGrade!.numericGrade), gx + 10, gy + 54);
+      ctx.font = "bold 36px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      ctx.fillText(String(grade.bestGrade!.numericGrade), gx + 10, gy + 64);
 
       // Grade label
       ctx.fillStyle = THEME.mutedFg;
-      ctx.font = "9px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-      ctx.fillText(grade.bestGrade!.grade, gx + 10, gy + 68);
+      ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      ctx.fillText(grade.bestGrade!.grade, gx + 10, gy + 80);
 
       // Thresholds
       if (grade.frontLimitingGrade) {
         const ft = grade.frontLimitingGrade.front.maxLargerSide;
         const bt = grade.frontLimitingGrade.back.maxLargerSide;
-        ctx.fillStyle = hexToRgba(THEME.mutedFg, 0.6);
-        ctx.font = "9px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-        ctx.fillText(`Front: ${ft}/${100 - ft}`, gx + 10, gy + 82);
+        ctx.fillStyle = hexToRgba(THEME.mutedFg, 0.65);
+        ctx.font = "10px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+        ctx.fillText(`Front: ${ft}/${100 - ft}`, gx + 10, gy + 95);
         if (hasBack) {
-          ctx.fillText(`Back: ${bt}/${100 - bt}`, gx + 10, gy + 92);
+          ctx.fillText(`Back: ${bt}/${100 - bt}`, gx + 10, gy + 107);
         }
       }
     } else {
       ctx.fillStyle = hexToRgba(THEME.mutedFg, 0.4);
-      ctx.font = "bold 22px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-      ctx.fillText("-", gx + 10, gy + 52);
+      ctx.font = "bold 28px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      ctx.fillText("-", gx + 10, gy + 58);
     }
   }
 
