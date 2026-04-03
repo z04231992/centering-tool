@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
 import { detectCardEdgesAI } from "@/lib/image-processing/ai-detect";
 import { rotateImageSrc } from "@/lib/image-processing/rotate";
+import { cropAroundCard } from "@/lib/image-processing/crop";
 import { generateShareImage, downloadShareImage } from "@/lib/share-export";
 import { useGradeCalculation } from "@/hooks/useGradeCalculation";
 
@@ -19,6 +20,7 @@ export function CardCanvas() {
   const [processedSrc, setProcessedSrc] = useState<string | null>(null);
   const [warpEnabled, setWarpEnabled] = useState(false);
   const [warpedSrc, setWarpedSrc] = useState<string | null>(null);
+  const [croppedSrc, setCroppedSrc] = useState<string | null>(null);
   const lastAnalyzedSrc = useRef<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(0);
@@ -41,25 +43,49 @@ export function CardCanvas() {
     return <ImageUploader />;
   }
 
-  function applyResult(result: { outer: { left: number; right: number; top: number; bottom: number }; inner: { left: number; right: number; top: number; bottom: number }; warpedImageSrc?: string }, srcToUse: string) {
-    if (result.warpedImageSrc) {
-      setWarpedSrc(result.warpedImageSrc);
-      generateProcessedPreview(result.warpedImageSrc)
+  async function applyResult(result: { outer: { left: number; right: number; top: number; bottom: number }; inner: { left: number; right: number; top: number; bottom: number }; warpedImageSrc?: string }, srcToUse: string) {
+    const baseSrc = result.warpedImageSrc || srcToUse;
+
+    // Auto-crop the image tightly around the card
+    try {
+      const cropped = await cropAroundCard(baseSrc, result.outer, result.inner, 0.04);
+      setCroppedSrc(cropped.croppedSrc);
+
+      // Use recalculated guide positions relative to cropped image
+      setGuide(activeSide, "outer", "left", cropped.outer.left);
+      setGuide(activeSide, "outer", "right", cropped.outer.right);
+      setGuide(activeSide, "outer", "top", cropped.outer.top);
+      setGuide(activeSide, "outer", "bottom", cropped.outer.bottom);
+      setGuide(activeSide, "inner", "left", cropped.inner.left);
+      setGuide(activeSide, "inner", "right", cropped.inner.right);
+      setGuide(activeSide, "inner", "top", cropped.inner.top);
+      setGuide(activeSide, "inner", "bottom", cropped.inner.bottom);
+
+      if (result.warpedImageSrc) {
+        setWarpedSrc(cropped.croppedSrc);
+      }
+
+      generateProcessedPreview(cropped.croppedSrc)
         .then(setProcessedSrc)
         .catch(() => setProcessedSrc(null));
-    } else {
-      generateProcessedPreview(srcToUse)
+    } catch {
+      // Fallback: no crop
+      setCroppedSrc(null);
+      if (result.warpedImageSrc) {
+        setWarpedSrc(result.warpedImageSrc);
+      }
+      setGuide(activeSide, "outer", "left", result.outer.left);
+      setGuide(activeSide, "outer", "right", result.outer.right);
+      setGuide(activeSide, "outer", "top", result.outer.top);
+      setGuide(activeSide, "outer", "bottom", result.outer.bottom);
+      setGuide(activeSide, "inner", "left", result.inner.left);
+      setGuide(activeSide, "inner", "right", result.inner.right);
+      setGuide(activeSide, "inner", "top", result.inner.top);
+      setGuide(activeSide, "inner", "bottom", result.inner.bottom);
+      generateProcessedPreview(baseSrc)
         .then(setProcessedSrc)
         .catch(() => setProcessedSrc(null));
     }
-    setGuide(activeSide, "outer", "left", result.outer.left);
-    setGuide(activeSide, "outer", "right", result.outer.right);
-    setGuide(activeSide, "outer", "top", result.outer.top);
-    setGuide(activeSide, "outer", "bottom", result.outer.bottom);
-    setGuide(activeSide, "inner", "left", result.inner.left);
-    setGuide(activeSide, "inner", "right", result.inner.right);
-    setGuide(activeSide, "inner", "top", result.inner.top);
-    setGuide(activeSide, "inner", "bottom", result.inner.bottom);
   }
 
   async function runDetection(warpOverride?: boolean, rotOverride?: number, aiOverride?: boolean) {
@@ -70,6 +96,7 @@ export function CardCanvas() {
     const shouldUseAI = aiOverride ?? useAI;
     setDetecting(true);
     setWarpedSrc(null);
+    setCroppedSrc(null);
     setProcessedSrc(null);
 
     try {
@@ -119,6 +146,7 @@ export function CardCanvas() {
   // Determine which image source to show
   const getDisplaySrc = (): string => {
     if (showProcessed && processedSrc) return processedSrc;
+    if (croppedSrc) return croppedSrc;
     if (warpedSrc) return warpedSrc;
     return side.imageSrc!;
   };
@@ -239,7 +267,7 @@ export function CardCanvas() {
           {showProcessed ? "Original" : "B&W View"}
         </button>
         <button
-          onClick={() => { reset(); setProcessedSrc(null); setWarpedSrc(null); setShowProcessed(true); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
+          onClick={() => { reset(); setProcessedSrc(null); setWarpedSrc(null); setCroppedSrc(null); setShowProcessed(false); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
           className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-full bg-secondary hover:bg-secondary/80 border border-border transition-all"
         >
           <Upload className="w-4 h-4" />
