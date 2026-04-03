@@ -6,10 +6,12 @@ export function ImageUploader() {
   const { activeSide, setImage } = useMeasurementStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const processingRef = useRef(false);
 
   const processFile = useCallback(
     (file: File) => {
-      if (!file.type.startsWith("image/")) return;
+      if (!file.type.startsWith("image/") || processingRef.current) return;
+      processingRef.current = true;
       const reader = new FileReader();
       reader.onload = (e) => {
         const src = e.target?.result as string;
@@ -23,9 +25,12 @@ export function ImageUploader() {
             height = Math.round(height * scale);
           }
           setImage(activeSide, src, width, height);
+          // Keep the guard up — component will unmount after setImage
         };
+        img.onerror = () => { processingRef.current = false; };
         img.src = src;
       };
+      reader.onerror = () => { processingRef.current = false; };
       reader.readAsDataURL(file);
     },
     [activeSide, setImage]
@@ -45,13 +50,19 @@ export function ImageUploader() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) processFile(file);
-      // Reset after a delay to avoid triggering another file picker
+      // Reset value so the same file can be re-selected later
+      // Use longer delay to avoid re-triggering on mobile
       setTimeout(() => {
         if (e.target) e.target.value = "";
-      }, 100);
+      }, 500);
     },
     [processFile]
   );
+
+  const handleClick = useCallback(() => {
+    if (processingRef.current) return;
+    fileInputRef.current?.click();
+  }, []);
 
   return (
     <div
@@ -63,7 +74,7 @@ export function ImageUploader() {
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
-      onClick={() => fileInputRef.current?.click()}
+      onClick={handleClick}
     >
       <input
         ref={fileInputRef}
