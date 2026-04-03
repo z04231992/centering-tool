@@ -48,7 +48,7 @@ export function CardCanvas() {
 
     // Auto-crop the image tightly around the card
     try {
-      const cropped = await cropAroundCard(baseSrc, result.outer, result.inner, 0.04);
+      const cropped = await cropAroundCard(baseSrc, result.outer, result.inner, 0.15);
       setCroppedSrc(cropped.croppedSrc);
 
       // Use recalculated guide positions relative to cropped image
