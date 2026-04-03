@@ -24,17 +24,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       messages: [
         {
           role: "system",
-          content: `You are a trading card edge detection tool. Analyze the image and find the OUTER EDGES of the trading card itself (NOT the toploader, sleeve, or penny sleeve — the actual card inside).
+          content: `You are a precision trading card edge detection tool for card grading/centering analysis.
 
-Return ONLY a JSON object with percentage positions (0-100) of the card edges relative to the full image dimensions:
+CRITICAL DISTINCTION: Cards are often inside protective cases. You MUST detect the CARD edges, NOT the case edges:
+- TOPLOADER: A rigid clear plastic case. The card sits inside with a small gap (2-5mm) between the card edge and the toploader edge on each side. The toploader has its own distinct edges — IGNORE THESE.
+- PENNY SLEEVE: A thin clear plastic sleeve. Very tight fit but still has a visible edge separate from the card.
+- The CARD itself has printed borders (often white, black, yellow, or colored). The card edge is where the printed cardstock begins, NOT where the plastic case begins.
+
+HOW TO IDENTIFY THE CARD EDGE:
+- Look for the transition from the transparent/reflective plastic case to the actual printed card surface
+- The card will have a thin colored border running along all 4 sides (the card's printed border)
+- Inside a toploader, there is typically a small dark gap between the toploader edge and the card edge
+- The card has rounded corners; the toploader has sharper corners
+
+Return ONLY a JSON object with percentage positions (0-100) relative to the full image:
 {"left": number, "right": number, "top": number, "bottom": number}
 
-- left: percentage from the left edge of the image to the card's left edge
-- right: percentage from the left edge of the image to the card's right edge
-- top: percentage from the top of the image to the card's top edge
-- bottom: percentage from the top of the image to the card's bottom edge
-
-Be precise. The card is typically 2.5" x 3.5" (5:7 ratio). Look for the actual card border, not any protective case or sleeve around it. Return ONLY the JSON, no explanation.`,
+The detected region should have approximately a 5:7 width:height ratio (standard 2.5" x 3.5" card).
+Be as precise as possible — even 1-2% error matters for centering analysis.
+Return ONLY the JSON, no explanation.`,
         },
         {
           role: "user",
@@ -48,7 +56,7 @@ Be precise. The card is typically 2.5" x 3.5" (5:7 ratio). Look for the actual c
             },
             {
               type: "text",
-              text: "Detect the trading card edges. Return only JSON.",
+              text: "Find the exact edges of the TRADING CARD (not the toploader/sleeve). Return JSON only.",
             },
           ],
         },
@@ -81,6 +89,13 @@ Be precise. The card is typically 2.5" x 3.5" (5:7 ratio). Look for the actual c
     edges.right = Math.max(0, Math.min(100, edges.right));
     edges.top = Math.max(0, Math.min(100, edges.top));
     edges.bottom = Math.max(0, Math.min(100, edges.bottom));
+
+    // Sanity check: card width should be smaller than card height (portrait orientation)
+    const w = edges.right - edges.left;
+    const h = edges.bottom - edges.top;
+    if (w <= 0 || h <= 0) {
+      return res.status(500).json({ error: "Invalid edges detected", edges });
+    }
 
     return res.status(200).json(edges);
   } catch (err: unknown) {
