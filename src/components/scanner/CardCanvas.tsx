@@ -2,9 +2,10 @@ import { useMeasurementStore } from "@/stores/measurement-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { ImageUploader } from "./ImageUploader";
 import { CardOverlay } from "./CardOverlay";
-import { Scan, Loader2, Upload, Eye, EyeOff, RotateCcw, RotateCw, Share2 } from "lucide-react";
+import { Scan, Loader2, Upload, Eye, EyeOff, RotateCcw, RotateCw, Share2, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
+import { detectCardEdgesAI } from "@/lib/image-processing/ai-detect";
 import { rotateImageSrc } from "@/lib/image-processing/rotate";
 import { generateShareImage, downloadShareImage } from "@/lib/share-export";
 import { useGradeCalculation } from "@/hooks/useGradeCalculation";
@@ -22,6 +23,7 @@ export function CardCanvas() {
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(0);
   const [sharing, setSharing] = useState(false);
+  const [useAI, setUseAI] = useState(true);
   const { frontRatio, backRatio, grades, hasBack } = useGradeCalculation();
 
   // Auto-detect when a new image is uploaded
@@ -39,46 +41,57 @@ export function CardCanvas() {
     return <ImageUploader />;
   }
 
-  async function runDetection(warpOverride?: boolean, rotOverride?: number) {
+  function applyResult(result: { outer: { left: number; right: number; top: number; bottom: number }; inner: { left: number; right: number; top: number; bottom: number }; warpedImageSrc?: string }, srcToUse: string) {
+    if (result.warpedImageSrc) {
+      setWarpedSrc(result.warpedImageSrc);
+      generateProcessedPreview(result.warpedImageSrc)
+        .then(setProcessedSrc)
+        .catch(() => setProcessedSrc(null));
+    } else {
+      generateProcessedPreview(srcToUse)
+        .then(setProcessedSrc)
+        .catch(() => setProcessedSrc(null));
+    }
+    setGuide(activeSide, "outer", "left", result.outer.left);
+    setGuide(activeSide, "outer", "right", result.outer.right);
+    setGuide(activeSide, "outer", "top", result.outer.top);
+    setGuide(activeSide, "outer", "bottom", result.outer.bottom);
+    setGuide(activeSide, "inner", "left", result.inner.left);
+    setGuide(activeSide, "inner", "right", result.inner.right);
+    setGuide(activeSide, "inner", "top", result.inner.top);
+    setGuide(activeSide, "inner", "bottom", result.inner.bottom);
+  }
+
+  async function runDetection(warpOverride?: boolean, rotOverride?: number, aiOverride?: boolean) {
     if (!side.imageSrc) return;
 
     const useWarp = warpOverride ?? warpEnabled;
     const useRotation = rotOverride ?? rotation;
+    const shouldUseAI = aiOverride ?? useAI;
     setDetecting(true);
     setWarpedSrc(null);
     setProcessedSrc(null);
 
     try {
-      // If rotation is applied, rotate the source image first
       const srcToUse = useRotation !== 0
         ? await rotateImageSrc(side.imageSrc, useRotation)
         : side.imageSrc;
 
+      // Try AI detection first if enabled
+      if (shouldUseAI) {
+        const aiResult = await detectCardEdgesAI(srcToUse);
+        if (aiResult) {
+          applyResult(aiResult, srcToUse);
+          return;
+        }
+        console.warn("[Detection] AI failed, falling back to local detection");
+      }
+
+      // Local detection fallback
       const result = await detectCardEdges(srcToUse, { warp: useWarp });
       if (result) {
-        // If warp produced a warped image, store it
-        if (result.warpedImageSrc) {
-          setWarpedSrc(result.warpedImageSrc);
-          generateProcessedPreview(result.warpedImageSrc)
-            .then(setProcessedSrc)
-            .catch(() => setProcessedSrc(null));
-        } else {
-          // If rotated but no warp, use the rotated source
-          generateProcessedPreview(srcToUse)
-            .then(setProcessedSrc)
-            .catch(() => setProcessedSrc(null));
-        }
-
-        setGuide(activeSide, "outer", "left", result.outer.left);
-        setGuide(activeSide, "outer", "right", result.outer.right);
-        setGuide(activeSide, "outer", "top", result.outer.top);
-        setGuide(activeSide, "outer", "bottom", result.outer.bottom);
-        setGuide(activeSide, "inner", "left", result.inner.left);
-        setGuide(activeSide, "inner", "right", result.inner.right);
-        setGuide(activeSide, "inner", "top", result.inner.top);
-        setGuide(activeSide, "inner", "bottom", result.inner.bottom);
+        applyResult(result, srcToUse);
       } else {
-        // Still generate B&W preview even if detection fails
         generateProcessedPreview(srcToUse)
           .then(setProcessedSrc)
           .catch(() => setProcessedSrc(null));
@@ -147,18 +160,32 @@ export function CardCanvas() {
 
       {/* Warp toggle + Rotation slider */}
       <div className="flex flex-col items-center gap-3">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={warpEnabled}
-            onChange={(e) => { const v = e.target.checked; setWarpEnabled(v); runDetection(v); }}
-            className="w-4 h-4 accent-primary rounded"
-          />
-          <span className="text-sm text-muted-foreground">
-            <RotateCcw className="w-3.5 h-3.5 inline mr-1" />
-            Warp card for better accuracy
-          </span>
-        </label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useAI}
+              onChange={(e) => { const v = e.target.checked; setUseAI(v); }}
+              className="w-4 h-4 accent-primary rounded"
+            />
+            <span className="text-sm text-muted-foreground">
+              <Sparkles className="w-3.5 h-3.5 inline mr-1" />
+              AI Detection
+            </span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={warpEnabled}
+              onChange={(e) => { const v = e.target.checked; setWarpEnabled(v); runDetection(v); }}
+              className="w-4 h-4 accent-primary rounded"
+            />
+            <span className="text-sm text-muted-foreground">
+              <RotateCcw className="w-3.5 h-3.5 inline mr-1" />
+              Warp
+            </span>
+          </label>
+        </div>
 
         {/* Rotation adjustment */}
         <div className="flex items-center gap-3 w-full max-w-xs">
