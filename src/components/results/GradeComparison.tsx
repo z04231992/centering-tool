@@ -62,8 +62,8 @@ export function GradeComparison() {
       {/* Guide Color Settings */}
       <div className="border-t border-border pt-4 space-y-3">
         <div>
-          <h4 className="text-xs font-medium text-muted-foreground mb-2">Outer Guide Color</h4>
-          <div className="flex gap-2 flex-wrap">
+          <h4 className="text-xs font-medium text-muted-foreground mb-2 text-center">Outer Guide Color</h4>
+          <div className="flex gap-2 flex-wrap justify-center">
             {guideColors.map(({ color, name }) => (
               <button
                 key={color}
@@ -81,8 +81,8 @@ export function GradeComparison() {
           </div>
         </div>
         <div>
-          <h4 className="text-xs font-medium text-muted-foreground mb-2">Inner Guide Color</h4>
-          <div className="flex gap-2 flex-wrap">
+          <h4 className="text-xs font-medium text-muted-foreground mb-2 text-center">Inner Guide Color</h4>
+          <div className="flex gap-2 flex-wrap justify-center">
             {guideColors.map(({ color, name }) => (
               <button
                 key={color}
