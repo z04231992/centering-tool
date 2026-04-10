@@ -6,6 +6,8 @@ import { Scan, Loader2, Upload, Eye, EyeOff, RotateCcw, RotateCw, Share2, Sparkl
 import { useState, useEffect, useRef } from "react";
 import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
 import { detectCardEdgesAI } from "@/lib/image-processing/ai-detect";
+import { detectCardEdgesOpenCV } from "@/lib/image-processing/opencv-detect";
+import { preloadOpenCV } from "@/lib/image-processing/opencv-loader";
 import { rotateImageSrc } from "@/lib/image-processing/rotate";
 import { cropAroundCard } from "@/lib/image-processing/crop";
 import { generateShareImage, downloadShareImage } from "@/lib/share-export";
@@ -104,17 +106,28 @@ export function CardCanvas() {
         ? await rotateImageSrc(side.imageSrc, useRotation)
         : side.imageSrc;
 
-      // Try AI detection first if enabled
+      // 1. Try OpenCV first (fast, client-side)
+      try {
+        const cvResult = await detectCardEdgesOpenCV(srcToUse);
+        if (cvResult) {
+          applyResult(cvResult, srcToUse);
+          return;
+        }
+      } catch (err) {
+        console.warn("[Detection] OpenCV failed:", err);
+      }
+
+      // 2. Try AI detection if enabled
       if (shouldUseAI) {
         const aiResult = await detectCardEdgesAI(srcToUse);
         if (aiResult) {
           applyResult(aiResult, srcToUse);
           return;
         }
-        console.warn("[Detection] AI failed, falling back to local detection");
+        console.warn("[Detection] AI failed, falling back to gradient");
       }
 
-      // Local detection fallback
+      // 3. Last resort: gradient-based detection
       const result = await detectCardEdges(srcToUse, { warp: useWarp });
       if (result) {
         applyResult(result, srcToUse);

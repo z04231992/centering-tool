@@ -1,12 +1,16 @@
 import { Upload, Camera } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { useMeasurementStore } from "@/stores/measurement-store";
+import { preloadOpenCV } from "@/lib/image-processing/opencv-loader";
 
 export function ImageUploader() {
   const { activeSide, setImage } = useMeasurementStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const processingRef = useRef(false);
+
+  // Start loading OpenCV in background while user is on upload screen
+  useEffect(() => { preloadOpenCV(); }, []);
 
   const processFile = useCallback(
     (file: File) => {
