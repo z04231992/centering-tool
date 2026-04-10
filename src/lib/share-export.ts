@@ -307,11 +307,30 @@ export async function generateShareImage(options: ShareExportOptions): Promise<s
   return canvas.toDataURL("image/png");
 }
 
-export function downloadShareImage(dataUrl: string) {
+export async function downloadShareImage(dataUrl: string) {
+  // Convert data URL to blob
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const fileName = `centering-result-${Date.now()}.png`;
+  const file = new File([blob], fileName, { type: "image/png" });
+
+  // Try native share (mobile) — lets users view, save, or send
+  if (navigator.share && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "Centering Result" });
+      return;
+    } catch {
+      // User cancelled or share failed — fall through to download
+    }
+  }
+
+  // Fallback: blob URL download (desktop)
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.download = `centering-result-${Date.now()}.png`;
-  link.href = dataUrl;
+  link.download = fileName;
+  link.href = url;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
