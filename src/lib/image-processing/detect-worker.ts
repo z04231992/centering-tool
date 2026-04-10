@@ -366,6 +366,37 @@ function warpImage(
   return { pixels: dst, w: dstW, h: dstH };
 }
 
+// ── Skew detection — only warp if perspective is significantly off ──
+
+function checkSkew(corners: Point[], w: number, h: number): boolean {
+  // corners: [TL, TR, BR, BL]
+  // Compare to axis-aligned bounding rectangle
+  const minX = Math.min(corners[0].x, corners[3].x);
+  const maxX = Math.max(corners[1].x, corners[2].x);
+  const minY = Math.min(corners[0].y, corners[1].y);
+  const maxY = Math.max(corners[2].y, corners[3].y);
+
+  const perfect = [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
+  ];
+
+  // Max corner deviation from perfect rectangle
+  let maxDev = 0;
+  for (let i = 0; i < 4; i++) {
+    const dev = Math.hypot(corners[i].x - perfect[i].x, corners[i].y - perfect[i].y);
+    if (dev > maxDev) maxDev = dev;
+  }
+
+  const imgDiag = Math.hypot(w, h);
+  const skewRatio = maxDev / imgDiag;
+
+  // Only warp if distortion exceeds 3% of image diagonal
+  return skewRatio > 0.03;
+}
+
 // ── Worker message handler ──
 
 self.onmessage = (e: MessageEvent) => {
@@ -392,8 +423,10 @@ self.onmessage = (e: MessageEvent) => {
       corners = findCorners(leftPts, rightPts, topPts, bottomPts);
     }
 
-    // Perspective warp if requested and corners available
-    if (doWarp && corners) {
+    // Only warp if corners show significant perspective distortion
+    const needsWarp = doWarp && corners && checkSkew(corners, w, h);
+
+    if (needsWarp && corners) {
       const warped = warpImage(data, w, h, corners);
 
       // Re-detect on warped image for precise guides
