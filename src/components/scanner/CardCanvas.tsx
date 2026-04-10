@@ -5,7 +5,6 @@ import { CardOverlay } from "./CardOverlay";
 import { Scan, Loader2, Upload, Eye, EyeOff, RotateCw, Share2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
-import { detectCardEdgesOpenCV } from "@/lib/image-processing/opencv-detect";
 import { rotateImageSrc } from "@/lib/image-processing/rotate";
 import { generateShareImage, downloadShareImage } from "@/lib/share-export";
 import { useGradeCalculation } from "@/hooks/useGradeCalculation";
@@ -65,18 +64,6 @@ export function CardCanvas() {
         ? await rotateImageSrc(side.imageSrc, useRotation)
         : side.imageSrc;
 
-      // 1. Try OpenCV first (fast, client-side)
-      try {
-        const cvResult = await detectCardEdgesOpenCV(srcToUse);
-        if (cvResult) {
-          applyResult(cvResult, srcToUse);
-          return;
-        }
-      } catch (err) {
-        console.warn("[Detection] OpenCV failed:", err);
-      }
-
-      // 2. Fallback: gradient-based detection
       const result = await detectCardEdges(srcToUse, { warp: false });
       if (result) {
         applyResult(result, srcToUse);
