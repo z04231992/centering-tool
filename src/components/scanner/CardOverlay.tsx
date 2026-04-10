@@ -51,7 +51,7 @@ export function CardOverlay({ outer, inner, onOuterChange, onInnerChange }: Card
       className="absolute inset-0"
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      style={{ touchAction: "none" }}
+      style={{ touchAction: dragTarget ? "none" : "auto" }}
     >
       <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: "none" }}>
         <defs>
@@ -154,6 +154,7 @@ function ArrowHandle({ pos, midPerp, direction, color, icon, onPointerDown, smal
         backgroundColor: color,
         color: "#fff",
         opacity: 0.9,
+        touchAction: "none",
       }}
       onPointerDown={onPointerDown}
     >
