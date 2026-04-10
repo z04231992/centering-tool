@@ -206,7 +206,7 @@ export function CardCanvas() {
             alt={`Card ${activeSide}`}
             className="block w-full select-none"
             draggable={false}
-            style={rotation !== 0 && !warpedSrc ? { transform: `rotate(${rotation}deg)`, transformOrigin: "center center" } : undefined}
+            style={rotation !== 0 ? { transform: `rotate(${rotation}deg)`, transformOrigin: "center center" } : undefined}
           />
           <CardOverlay
             outer={side.outer}
