@@ -2,14 +2,11 @@ import { useMeasurementStore } from "@/stores/measurement-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { ImageUploader } from "./ImageUploader";
 import { CardOverlay } from "./CardOverlay";
-import { Scan, Loader2, Upload, Eye, EyeOff, RotateCcw, RotateCw, Share2, Sparkles } from "lucide-react";
+import { Scan, Loader2, Upload, Eye, EyeOff, RotateCw, Share2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
-import { detectCardEdgesAI } from "@/lib/image-processing/ai-detect";
 import { detectCardEdgesOpenCV } from "@/lib/image-processing/opencv-detect";
-import { preloadOpenCV } from "@/lib/image-processing/opencv-loader";
 import { rotateImageSrc } from "@/lib/image-processing/rotate";
-import { cropAroundCard } from "@/lib/image-processing/crop";
 import { generateShareImage, downloadShareImage } from "@/lib/share-export";
 import { useGradeCalculation } from "@/hooks/useGradeCalculation";
 
@@ -20,14 +17,10 @@ export function CardCanvas() {
   const [detecting, setDetecting] = useState(false);
   const [showProcessed, setShowProcessed] = useState(false);
   const [processedSrc, setProcessedSrc] = useState<string | null>(null);
-  const [warpEnabled, setWarpEnabled] = useState(false);
-  const [warpedSrc, setWarpedSrc] = useState<string | null>(null);
-  const [croppedSrc, setCroppedSrc] = useState<string | null>(null);
   const lastAnalyzedSrc = useRef<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(0);
   const [sharing, setSharing] = useState(false);
-  const [useAI, setUseAI] = useState(true);
   const { frontRatio, backRatio, grades, hasBack } = useGradeCalculation();
 
   // Auto-detect when a new image is uploaded
@@ -36,7 +29,7 @@ export function CardCanvas() {
       lastAnalyzedSrc.current = side.imageSrc;
       setRotation(0);
       rotationRef.current = 0;
-      setShowProcessed(false); // Always start in color mode on new image
+      setShowProcessed(false);
       runDetection();
     }
   }, [side.imageSrc]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -45,60 +38,26 @@ export function CardCanvas() {
     return <ImageUploader />;
   }
 
-  async function applyResult(result: { outer: { left: number; right: number; top: number; bottom: number }; inner: { left: number; right: number; top: number; bottom: number }; warpedImageSrc?: string }, srcToUse: string) {
-    const baseSrc = result.warpedImageSrc || srcToUse;
+  function applyResult(result: { outer: { left: number; right: number; top: number; bottom: number }; inner: { left: number; right: number; top: number; bottom: number } }, srcToUse: string) {
+    setGuide(activeSide, "outer", "left", result.outer.left);
+    setGuide(activeSide, "outer", "right", result.outer.right);
+    setGuide(activeSide, "outer", "top", result.outer.top);
+    setGuide(activeSide, "outer", "bottom", result.outer.bottom);
+    setGuide(activeSide, "inner", "left", result.inner.left);
+    setGuide(activeSide, "inner", "right", result.inner.right);
+    setGuide(activeSide, "inner", "top", result.inner.top);
+    setGuide(activeSide, "inner", "bottom", result.inner.bottom);
 
-    // Auto-crop the image tightly around the card
-    try {
-      const cropped = await cropAroundCard(baseSrc, result.outer, result.inner, 0.15);
-      setCroppedSrc(cropped.croppedSrc);
-
-      // Use recalculated guide positions relative to cropped image
-      setGuide(activeSide, "outer", "left", cropped.outer.left);
-      setGuide(activeSide, "outer", "right", cropped.outer.right);
-      setGuide(activeSide, "outer", "top", cropped.outer.top);
-      setGuide(activeSide, "outer", "bottom", cropped.outer.bottom);
-      setGuide(activeSide, "inner", "left", cropped.inner.left);
-      setGuide(activeSide, "inner", "right", cropped.inner.right);
-      setGuide(activeSide, "inner", "top", cropped.inner.top);
-      setGuide(activeSide, "inner", "bottom", cropped.inner.bottom);
-
-      if (result.warpedImageSrc) {
-        setWarpedSrc(cropped.croppedSrc);
-      }
-
-      generateProcessedPreview(cropped.croppedSrc)
-        .then(setProcessedSrc)
-        .catch(() => setProcessedSrc(null));
-    } catch {
-      // Fallback: no crop
-      setCroppedSrc(null);
-      if (result.warpedImageSrc) {
-        setWarpedSrc(result.warpedImageSrc);
-      }
-      setGuide(activeSide, "outer", "left", result.outer.left);
-      setGuide(activeSide, "outer", "right", result.outer.right);
-      setGuide(activeSide, "outer", "top", result.outer.top);
-      setGuide(activeSide, "outer", "bottom", result.outer.bottom);
-      setGuide(activeSide, "inner", "left", result.inner.left);
-      setGuide(activeSide, "inner", "right", result.inner.right);
-      setGuide(activeSide, "inner", "top", result.inner.top);
-      setGuide(activeSide, "inner", "bottom", result.inner.bottom);
-      generateProcessedPreview(baseSrc)
-        .then(setProcessedSrc)
-        .catch(() => setProcessedSrc(null));
-    }
+    generateProcessedPreview(srcToUse)
+      .then(setProcessedSrc)
+      .catch(() => setProcessedSrc(null));
   }
 
-  async function runDetection(warpOverride?: boolean, rotOverride?: number, aiOverride?: boolean) {
+  async function runDetection(rotOverride?: number) {
     if (!side.imageSrc) return;
 
-    const useWarp = warpOverride ?? warpEnabled;
     const useRotation = rotOverride ?? rotation;
-    const shouldUseAI = aiOverride ?? useAI;
     setDetecting(true);
-    setWarpedSrc(null);
-    setCroppedSrc(null);
     setProcessedSrc(null);
 
     try {
@@ -117,18 +76,8 @@ export function CardCanvas() {
         console.warn("[Detection] OpenCV failed:", err);
       }
 
-      // 2. Try AI detection if enabled
-      if (shouldUseAI) {
-        const aiResult = await detectCardEdgesAI(srcToUse);
-        if (aiResult) {
-          applyResult(aiResult, srcToUse);
-          return;
-        }
-        console.warn("[Detection] AI failed, falling back to gradient");
-      }
-
-      // 3. Last resort: gradient-based detection
-      const result = await detectCardEdges(srcToUse, { warp: useWarp });
+      // 2. Fallback: gradient-based detection
+      const result = await detectCardEdges(srcToUse, { warp: false });
       if (result) {
         applyResult(result, srcToUse);
       } else {
@@ -144,7 +93,6 @@ export function CardCanvas() {
   }
 
   const handleRotationSlide = (newRotation: number) => {
-    // Only update visual rotation — user clicks Re-Detect to apply
     setRotation(newRotation);
     rotationRef.current = newRotation;
   };
@@ -156,11 +104,8 @@ export function CardCanvas() {
     setGuide(activeSide, "inner", edge, value);
   };
 
-  // Determine which image source to show
   const getDisplaySrc = (): string => {
     if (showProcessed && processedSrc) return processedSrc;
-    if (croppedSrc) return croppedSrc;
-    if (warpedSrc) return warpedSrc;
     return side.imageSrc!;
   };
 
@@ -193,42 +138,12 @@ export function CardCanvas() {
       {detecting && (
         <div className="flex items-center justify-center gap-3 px-4 py-3 rounded-2xl bg-primary/10 border border-primary/20">
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          <span className="text-sm text-primary font-medium">
-            {warpEnabled ? "Warping & detecting..." : "Detecting card edges..."}
-          </span>
+          <span className="text-sm text-primary font-medium">Detecting card edges...</span>
         </div>
       )}
 
-      {/* Warp toggle + Rotation slider */}
+      {/* Rotation slider */}
       <div className="flex flex-col items-center gap-3">
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={useAI}
-              onChange={(e) => { const v = e.target.checked; setUseAI(v); }}
-              className="w-4 h-4 accent-primary rounded"
-            />
-            <span className="text-sm text-muted-foreground">
-              <Sparkles className="w-3.5 h-3.5 inline mr-1" />
-              AI Detection
-            </span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={warpEnabled}
-              onChange={(e) => { const v = e.target.checked; setWarpEnabled(v); runDetection(v); }}
-              className="w-4 h-4 accent-primary rounded"
-            />
-            <span className="text-sm text-muted-foreground">
-              <RotateCcw className="w-3.5 h-3.5 inline mr-1" />
-              Warp
-            </span>
-          </label>
-        </div>
-
-        {/* Rotation adjustment */}
         <div className="flex items-center gap-3 w-full max-w-xs">
           <RotateCw className="w-4 h-4 text-muted-foreground flex-shrink-0" />
           <div className="flex flex-col w-full gap-1">
@@ -248,7 +163,7 @@ export function CardCanvas() {
           </div>
           {rotation !== 0 && (
             <button
-              onClick={() => { setRotation(0); rotationRef.current = 0; runDetection(undefined, 0); }}
+              onClick={() => { setRotation(0); rotationRef.current = 0; runDetection(0); }}
               className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded bg-secondary flex-shrink-0"
             >
               Reset
@@ -257,7 +172,7 @@ export function CardCanvas() {
         </div>
       </div>
 
-      {/* Action Buttons — above the card */}
+      {/* Action Buttons */}
       <div className="flex gap-2 justify-center flex-wrap">
         <button
           onClick={() => runDetection()}
@@ -280,7 +195,7 @@ export function CardCanvas() {
           {showProcessed ? "Original" : "B&W View"}
         </button>
         <button
-          onClick={() => { reset(); setProcessedSrc(null); setWarpedSrc(null); setCroppedSrc(null); setShowProcessed(false); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
+          onClick={() => { reset(); setProcessedSrc(null); setShowProcessed(false); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
           className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-full bg-secondary hover:bg-secondary/80 border border-border transition-all"
         >
           <Upload className="w-4 h-4" />
@@ -296,10 +211,7 @@ export function CardCanvas() {
         </button>
       </div>
 
-      {/*
-        Card Image with Overlay — fills available width, no restrictive max-height.
-        The inline-block shrink-wraps to exact image dimensions so overlay aligns 1:1.
-      */}
+      {/* Card Image with Overlay */}
       <div className="flex justify-center w-full">
         <div className="relative inline-block rounded-xl overflow-hidden bg-black w-full">
           <img
