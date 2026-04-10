@@ -63,14 +63,14 @@ export function GradeComparison() {
       <div className="border-t border-border pt-4 space-y-3">
         <div>
           <h4 className="text-xs font-medium text-muted-foreground mb-2">Outer Guide Color</h4>
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="flex gap-2.5 flex-wrap">
             {guideColors.map(({ color, name }) => (
               <button
                 key={color}
                 onClick={() => setOuterGuideColor(color)}
                 title={name}
                 className={cn(
-                  "w-7 h-7 rounded-md border-2 transition-all",
+                  "w-10 h-10 rounded-lg border-2 transition-all",
                   outerGuideColor === color
                     ? "border-primary scale-110 ring-2 ring-primary/30"
                     : "border-border hover:border-primary/50"
@@ -82,14 +82,14 @@ export function GradeComparison() {
         </div>
         <div>
           <h4 className="text-xs font-medium text-muted-foreground mb-2">Inner Guide Color</h4>
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="flex gap-2.5 flex-wrap">
             {guideColors.map(({ color, name }) => (
               <button
                 key={color}
                 onClick={() => setInnerGuideColor(color)}
                 title={name}
                 className={cn(
-                  "w-7 h-7 rounded-md border-2 transition-all",
+                  "w-10 h-10 rounded-lg border-2 transition-all",
                   innerGuideColor === color
                     ? "border-primary scale-110 ring-2 ring-primary/30"
                     : "border-border hover:border-primary/50"
