@@ -61,7 +61,7 @@ function pixelsToDataUrl(
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
-  const imageData = new ImageData(pixels, w, h);
+  const imageData = new ImageData(new Uint8ClampedArray(pixels.buffer as ArrayBuffer), w, h);
   ctx.putImageData(imageData, 0, 0);
   return canvas.toDataURL("image/jpeg", 0.92);
 }
@@ -117,9 +117,10 @@ export function detectInWorker(
       w_.addEventListener("error", onError);
 
       // Transfer the pixel buffer to the worker (zero-copy)
+      const buf = pixels.buffer as ArrayBuffer;
       w_.postMessage(
-        { pixels: pixels.buffer, w, h, doWarp: options.warp ?? false },
-        [pixels.buffer]
+        { pixels: buf, w, h, doWarp: options.warp ?? false },
+        { transfer: [buf] }
       );
     } catch (err) {
       reject(err);

@@ -400,20 +400,22 @@ self.onmessage = (e: MessageEvent) => {
       const warpedResult = detectEdges(warped.pixels, warped.w, warped.h);
       if (warpedResult) {
         const warpedInner = innerBorder(warpedResult.outer);
+        const buf = warped.pixels.buffer as ArrayBuffer;
         self.postMessage({
           outer: warpedResult.outer,
           inner: warpedInner,
-          warped: { pixels: warped.pixels.buffer, w: warped.w, h: warped.h },
-        }, [warped.pixels.buffer]);
+          warped: { pixels: buf, w: warped.w, h: warped.h },
+        }, { transfer: [buf] });
         return;
       }
 
       // Warp succeeded but re-detection failed — return warped image with original guides
+      const buf2 = warped.pixels.buffer as ArrayBuffer;
       self.postMessage({
         outer,
         inner,
-        warped: { pixels: warped.pixels.buffer, w: warped.w, h: warped.h },
-      }, [warped.pixels.buffer]);
+        warped: { pixels: buf2, w: warped.w, h: warped.h },
+      }, { transfer: [buf2] });
       return;
     }
 
