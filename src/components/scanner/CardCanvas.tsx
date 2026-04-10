@@ -4,7 +4,8 @@ import { ImageUploader } from "./ImageUploader";
 import { CardOverlay } from "./CardOverlay";
 import { Scan, Loader2, Upload, Eye, EyeOff, RotateCw, Share2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import { detectCardEdges, generateProcessedPreview } from "@/lib/image-processing/card-detector";
+import { generateProcessedPreview } from "@/lib/image-processing/card-detector";
+import { detectInWorker } from "@/lib/image-processing/worker-api";
 import { rotateImageSrc } from "@/lib/image-processing/rotate";
 import { generateShareImage, downloadShareImage } from "@/lib/share-export";
 import { useGradeCalculation } from "@/hooks/useGradeCalculation";
@@ -16,6 +17,7 @@ export function CardCanvas() {
   const [detecting, setDetecting] = useState(false);
   const [showProcessed, setShowProcessed] = useState(false);
   const [processedSrc, setProcessedSrc] = useState<string | null>(null);
+  const [warpedSrc, setWarpedSrc] = useState<string | null>(null);
   const lastAnalyzedSrc = useRef<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(0);
@@ -29,6 +31,7 @@ export function CardCanvas() {
       setRotation(0);
       rotationRef.current = 0;
       setShowProcessed(false);
+      setWarpedSrc(null);
       runDetection();
     }
   }, [side.imageSrc]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -37,7 +40,7 @@ export function CardCanvas() {
     return <ImageUploader />;
   }
 
-  function applyResult(result: { outer: { left: number; right: number; top: number; bottom: number }; inner: { left: number; right: number; top: number; bottom: number } }, srcToUse: string) {
+  function applyGuides(result: { outer: { left: number; right: number; top: number; bottom: number }; inner: { left: number; right: number; top: number; bottom: number } }) {
     setGuide(activeSide, "outer", "left", result.outer.left);
     setGuide(activeSide, "outer", "right", result.outer.right);
     setGuide(activeSide, "outer", "top", result.outer.top);
@@ -46,10 +49,6 @@ export function CardCanvas() {
     setGuide(activeSide, "inner", "right", result.inner.right);
     setGuide(activeSide, "inner", "top", result.inner.top);
     setGuide(activeSide, "inner", "bottom", result.inner.bottom);
-
-    generateProcessedPreview(srcToUse)
-      .then(setProcessedSrc)
-      .catch(() => setProcessedSrc(null));
   }
 
   async function runDetection(rotOverride?: number) {
@@ -58,15 +57,23 @@ export function CardCanvas() {
     const useRotation = rotOverride ?? rotation;
     setDetecting(true);
     setProcessedSrc(null);
+    setWarpedSrc(null);
 
     try {
       const srcToUse = useRotation !== 0
         ? await rotateImageSrc(side.imageSrc, useRotation)
         : side.imageSrc;
 
-      const result = await detectCardEdges(srcToUse, { warp: false });
-      if (result) {
-        applyResult(result, srcToUse);
+      // Run detection in Web Worker (no UI freeze)
+      const result = await detectInWorker(srcToUse, { warp: true });
+      applyGuides(result);
+
+      // If warped image was produced, use it as display
+      if (result.warpedSrc) {
+        setWarpedSrc(result.warpedSrc);
+        generateProcessedPreview(result.warpedSrc)
+          .then(setProcessedSrc)
+          .catch(() => setProcessedSrc(null));
       } else {
         generateProcessedPreview(srcToUse)
           .then(setProcessedSrc)
@@ -74,6 +81,10 @@ export function CardCanvas() {
       }
     } catch (err) {
       console.error("[Detection]", err);
+      // Generate preview even if detection fails
+      generateProcessedPreview(side.imageSrc)
+        .then(setProcessedSrc)
+        .catch(() => setProcessedSrc(null));
     } finally {
       setDetecting(false);
     }
@@ -93,6 +104,7 @@ export function CardCanvas() {
 
   const getDisplaySrc = (): string => {
     if (showProcessed && processedSrc) return processedSrc;
+    if (warpedSrc) return warpedSrc;
     return side.imageSrc!;
   };
 
@@ -182,7 +194,7 @@ export function CardCanvas() {
           {showProcessed ? "Original" : "B&W View"}
         </button>
         <button
-          onClick={() => { reset(); setProcessedSrc(null); setShowProcessed(false); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
+          onClick={() => { reset(); setProcessedSrc(null); setWarpedSrc(null); setShowProcessed(false); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
           className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-full bg-secondary hover:bg-secondary/80 border border-border transition-all"
         >
           <Upload className="w-4 h-4" />
@@ -206,7 +218,7 @@ export function CardCanvas() {
             alt={`Card ${activeSide}`}
             className="block w-full select-none"
             draggable={false}
-            style={rotation !== 0 ? { transform: `rotate(${rotation}deg)`, transformOrigin: "center center" } : undefined}
+            style={rotation !== 0 && !warpedSrc ? { transform: `rotate(${rotation}deg)`, transformOrigin: "center center" } : undefined}
           />
           <CardOverlay
             outer={side.outer}
