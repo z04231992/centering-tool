@@ -17,7 +17,6 @@ export function CardCanvas() {
   const [detecting, setDetecting] = useState(false);
   const [showProcessed, setShowProcessed] = useState(false);
   const [processedSrc, setProcessedSrc] = useState<string | null>(null);
-  const [warpedSrc, setWarpedSrc] = useState<string | null>(null);
   const lastAnalyzedSrc = useRef<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const rotationRef = useRef(0);
@@ -31,7 +30,6 @@ export function CardCanvas() {
       setRotation(0);
       rotationRef.current = 0;
       setShowProcessed(false);
-      setWarpedSrc(null);
       runDetection();
     }
   }, [side.imageSrc]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -57,7 +55,6 @@ export function CardCanvas() {
     const useRotation = rotOverride ?? rotation;
     setDetecting(true);
     setProcessedSrc(null);
-    setWarpedSrc(null);
 
     try {
       const srcToUse = useRotation !== 0
@@ -65,20 +62,12 @@ export function CardCanvas() {
         : side.imageSrc;
 
       // Run detection in Web Worker (no UI freeze)
-      const result = await detectInWorker(srcToUse, { warp: true });
+      const result = await detectInWorker(srcToUse);
       applyGuides(result);
 
-      // If warped image was produced, use it as display
-      if (result.warpedSrc) {
-        setWarpedSrc(result.warpedSrc);
-        generateProcessedPreview(result.warpedSrc)
-          .then(setProcessedSrc)
-          .catch(() => setProcessedSrc(null));
-      } else {
-        generateProcessedPreview(srcToUse)
-          .then(setProcessedSrc)
-          .catch(() => setProcessedSrc(null));
-      }
+      generateProcessedPreview(srcToUse)
+        .then(setProcessedSrc)
+        .catch(() => setProcessedSrc(null));
     } catch (err) {
       console.error("[Detection]", err);
       // Generate preview even if detection fails
@@ -104,7 +93,6 @@ export function CardCanvas() {
 
   const getDisplaySrc = (): string => {
     if (showProcessed && processedSrc) return processedSrc;
-    if (warpedSrc) return warpedSrc;
     return side.imageSrc!;
   };
 
@@ -194,7 +182,7 @@ export function CardCanvas() {
           {showProcessed ? "Original" : "B&W View"}
         </button>
         <button
-          onClick={() => { reset(); setProcessedSrc(null); setWarpedSrc(null); setShowProcessed(false); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
+          onClick={() => { reset(); setProcessedSrc(null); setShowProcessed(false); setRotation(0); rotationRef.current = 0; lastAnalyzedSrc.current = null; }}
           className="flex items-center gap-2 px-4 py-2.5 text-sm rounded-full bg-secondary hover:bg-secondary/80 border border-border transition-all"
         >
           <Upload className="w-4 h-4" />

@@ -8,7 +8,6 @@ import type { GuidePositions } from "@/stores/measurement-store";
 export interface WorkerDetectResult {
   outer: GuidePositions;
   inner: GuidePositions;
-  warpedSrc?: string; // data URL of warped image (if warp was applied)
 }
 
 let worker: Worker | null = null;
@@ -50,29 +49,11 @@ function loadPixels(
 }
 
 /**
- * Convert raw RGBA pixel data to a data URL via canvas.
- */
-function pixelsToDataUrl(
-  pixels: Uint8ClampedArray,
-  w: number,
-  h: number
-): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-  const imageData = new ImageData(new Uint8ClampedArray(pixels.buffer as ArrayBuffer), w, h);
-  ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL("image/jpeg", 0.92);
-}
-
-/**
  * Run card edge detection in a Web Worker.
- * Returns guide positions and optionally a warped image.
+ * Returns guide positions (outer + inner borders).
  */
 export function detectInWorker(
-  imageSrc: string,
-  options: { warp?: boolean } = {}
+  imageSrc: string
 ): Promise<WorkerDetectResult> {
   return new Promise(async (resolve, reject) => {
     try {
@@ -89,22 +70,10 @@ export function detectInWorker(
           return;
         }
 
-        const output: WorkerDetectResult = {
+        resolve({
           outer: result.outer,
           inner: result.inner,
-        };
-
-        // If warped pixel data was returned, convert to data URL
-        if (result.warped) {
-          const warpedPixels = new Uint8ClampedArray(result.warped.pixels);
-          output.warpedSrc = pixelsToDataUrl(
-            warpedPixels,
-            result.warped.w,
-            result.warped.h
-          );
-        }
-
-        resolve(output);
+        });
       };
 
       const onError = (e: ErrorEvent) => {
@@ -119,7 +88,7 @@ export function detectInWorker(
       // Transfer the pixel buffer to the worker (zero-copy)
       const buf = pixels.buffer as ArrayBuffer;
       w_.postMessage(
-        { pixels: buf, w, h, doWarp: options.warp ?? false },
+        { pixels: buf, w, h },
         { transfer: [buf] }
       );
     } catch (err) {
