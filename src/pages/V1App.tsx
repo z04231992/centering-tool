@@ -6,7 +6,6 @@ import { GradeComparison } from "@/components/results/GradeComparison";
 import { GradingHandbook } from "@/components/reference/GradingHandbook";
 import { OffCenterVisualizer } from "@/components/visualizer/OffCenterVisualizer";
 import { Crosshair, BookOpen, Eye } from "lucide-react";
-import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 type Tab = "scanner" | "reference" | "visualizer";
@@ -27,7 +26,7 @@ export default function V1App() {
       {/* Tab Navigation */}
       <div className="border-b border-border bg-card/50">
         <div className="max-w-7xl mx-auto px-4">
-          <nav className="flex gap-1 -mb-px overflow-x-auto items-center">
+          <nav className="flex gap-1 -mb-px overflow-x-auto">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -43,12 +42,6 @@ export default function V1App() {
                 {label}
               </button>
             ))}
-            <Link
-              to="/ver2"
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 transition-colors"
-            >
-              Try V2 Beta →
-            </Link>
           </nav>
         </div>
       </div>
